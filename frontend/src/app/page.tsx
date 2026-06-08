@@ -219,9 +219,9 @@ function renderMarkdown(text: string): React.ReactNode {
 }
 
 export default function Dashboard() {
-  const BACKEND_URL = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
-    ? (process.env.NEXT_PUBLIC_BACKEND_URL || "")
-    : "http://127.0.0.1:8000";
+  // Use relative paths - Next.js proxy (next.config.ts rewrites) forwards /api/* to FastAPI locally
+  // On Vercel, the vercel.json routes handle /api/* -> backend/main.py
+  const BACKEND_URL = "";
 
   // Theme state: 'light' or 'dark'. Default is 'dark' for premium fintech experience.
   const [theme, setTheme] = useState<"light" | "dark">("dark");
@@ -536,7 +536,7 @@ export default function Dashboard() {
 
   async function checkBackendConnection() {
     try {
-      const res = await fetch(`${BACKEND_URL}/`);
+      const res = await fetch(`/api/stocks`, { signal: AbortSignal.timeout(5000) });
       if (res.ok) {
         setBackendConnected(true);
       } else {
@@ -1585,7 +1585,7 @@ export default function Dashboard() {
                             isMounted && (
                               <>
                                 {chartSubView === "price" && (
-                                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                  <ResponsiveContainer width="100%" height={300} minWidth={0}>
                                     <AreaChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <defs>
                                         <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
@@ -1603,7 +1603,7 @@ export default function Dashboard() {
                                 )}
 
                                 {chartSubView === "ma" && (
-                                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                  <ResponsiveContainer width="100%" height={300} minWidth={0}>
                                     <LineChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
@@ -1618,7 +1618,7 @@ export default function Dashboard() {
                                 )}
 
                                 {chartSubView === "rsi" && (
-                                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                  <ResponsiveContainer width="100%" height={300} minWidth={0}>
                                     <LineChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
@@ -1633,7 +1633,7 @@ export default function Dashboard() {
                                 )}
 
                                 {chartSubView === "macd" && (
-                                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                  <ResponsiveContainer width="100%" height={300} minWidth={0}>
                                     <ComposedChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
@@ -2145,7 +2145,7 @@ export default function Dashboard() {
                               </h4>
                               <div className="h-[220px] w-full">
                                 {isMounted && compareData.normalized_history && compareData.normalized_history.length > 0 ? (
-                                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                  <ResponsiveContainer width="100%" height={220} minWidth={0}>
                                     <LineChart data={compareData.normalized_history} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
@@ -2877,7 +2877,7 @@ export default function Dashboard() {
                           <h4 className="font-bold text-slate-900 dark:text-white text-xs mb-3">SIP Wealth Roadmap Accumulation</h4>
                           <div className="h-[220px] w-full">
                             {isMounted && (
-                              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                              <ResponsiveContainer width="100%" height={260} minWidth={0}>
                                 <AreaChart data={sipEnhancedResults.schedule} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                   <defs>
                                     <linearGradient id="colorInvested" x1="0" y1="0" x2="0" y2="1">
@@ -3028,7 +3028,7 @@ export default function Dashboard() {
                           <h4 className="font-bold text-slate-900 dark:text-white text-xs mb-3">Maturity Comparison Curve</h4>
                           <div className="h-[220px] w-full">
                             {isMounted && (
-                              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                              <ResponsiveContainer width="100%" height={220} minWidth={0}>
                                 <LineChart margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                   <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                   <XAxis dataKey="year" stroke="#64748B" fontSize={8} tickFormatter={(y) => `Yr ${y}`} />
@@ -3282,7 +3282,7 @@ export default function Dashboard() {
                           <h4 className="font-bold text-slate-800 dark:text-white text-xs mb-3">1-Year CAGR growth trajectory Comparison</h4>
                           <div className="h-[240px] w-full">
                             {isMounted && mfData.chart_data && mfData.chart_data.length > 0 && (
-                              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                              <ResponsiveContainer width="100%" height={240} minWidth={0}>
                                 <LineChart data={mfData.chart_data} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                   <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                   <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
