@@ -1026,7 +1026,11 @@ def download_report(filename: str):
     if not safe_filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Access denied. Only PDF reports can be downloaded.")
         
-    file_path = os.path.abspath(safe_filename)
+    if os.environ.get("VERCEL") or os.environ.get("NOW_REGION"):
+        file_path = os.path.join("/tmp", safe_filename)
+    else:
+        file_path = os.path.abspath(safe_filename)
+        
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="PDF report file not found.")
         

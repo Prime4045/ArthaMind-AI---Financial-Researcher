@@ -18,7 +18,11 @@ def generate_pdf_report(
     Generates a professional PDF report containing the AI Analyst Team findings.
     """
     if not output_filename:
-        output_filename = f"{ticker.replace('.', '_')}_Research_Report.pdf"
+        base_name = f"{ticker.replace('.', '_')}_Research_Report.pdf"
+        if os.environ.get("VERCEL") or os.environ.get("NOW_REGION"):
+            output_filename = os.path.join("/tmp", base_name)
+        else:
+            output_filename = base_name
         
     doc = SimpleDocTemplate(
         output_filename, 
