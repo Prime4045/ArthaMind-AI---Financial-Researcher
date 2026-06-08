@@ -154,12 +154,59 @@ export default function Dashboard() {
     }
   }
 
-  // Fetch stock history, real-time details, and AI recommendation when selected stock or time period changes
+  // Fetch stock dashboard data (tickers, info, history, recommendation) when selected stock or time period changes
   useEffect(() => {
-    fetchStockHistory(selectedTicker, timePeriod);
-    fetchStockInfo(selectedTicker);
-    fetchRecommendation(selectedTicker);
+    fetchDashboardData(selectedTicker, timePeriod);
   }, [selectedTicker, timePeriod]);
+
+  async function fetchDashboardData(ticker: string, period: string = "1Y") {
+    const periodMap: Record<string, string> = {
+      "1D": "1d",
+      "5D": "5d",
+      "1M": "1mo",
+      "6M": "6mo",
+      "YTD": "ytd",
+      "1Y": "1y",
+      "5Y": "5y",
+      "Max": "max"
+    };
+    const yfPeriod = periodMap[period] || "1y";
+    
+    setLoadingHistory(true);
+    setLoadingInfo(true);
+    setLoadingRecommendation(true);
+    
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/stock/${ticker}/dashboard?period=${yfPeriod}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.tickers) {
+          setTickers(data.tickers);
+        }
+        setCurrentStockInfo(data.info || null);
+        setStockHistory(data.history || []);
+        setAiRecommendation(data.recommendation || null);
+      } else {
+        console.warn("Dashboard batch API failed, using fallback endpoints.");
+        await Promise.all([
+          fetchStockHistory(ticker, period),
+          fetchStockInfo(ticker),
+          fetchRecommendation(ticker)
+        ]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch unified dashboard data:", err);
+      await Promise.all([
+        fetchStockHistory(ticker, period),
+        fetchStockInfo(ticker),
+        fetchRecommendation(ticker)
+      ]);
+    } finally {
+      setLoadingHistory(false);
+      setLoadingInfo(false);
+      setLoadingRecommendation(false);
+    }
+  }
 
   async function fetchTickers() {
     try {

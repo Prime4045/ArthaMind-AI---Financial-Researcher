@@ -104,15 +104,23 @@ def startup_event():
     import threading
     def prewarm_cache():
         try:
-            logger.info("Pre-warming stock info cache for default tickers...")
+            logger.info("Pre-warming stock info and history cache for default tickers...")
             db = SessionLocal()
             for ticker in DEFAULT_TICKERS:
                 try:
+                    # Pre-warm info
                     result = get_cached_stock_info(ticker, db)
                     if result.get("currentPrice", 0) > 0:
-                        logger.info(f"Pre-warmed cache for {ticker}: price={result['currentPrice']}")
+                        logger.info(f"Pre-warmed info cache for {ticker}: price={result['currentPrice']}")
                     else:
                         logger.warning(f"Pre-warm returned 0 price for {ticker}")
+                    
+                    # Pre-warm stock history (1y period)
+                    try:
+                        get_stock_history(ticker, period="1y", db=db)
+                        logger.info(f"Pre-warmed history cache (1y) for {ticker}")
+                    except Exception as he:
+                        logger.error(f"Error pre-warming history cache for {ticker}: {he}")
                 except Exception as e:
                     logger.error(f"Error pre-warming cache for {ticker}: {e}")
             db.close()
@@ -561,33 +569,38 @@ def get_stock_recommendation(ticker: str, db: Session = Depends(get_db)):
     ticker = ticker.strip().upper()
     cached_info = get_cached_stock_info(ticker, db)
     
-    # Fetch historical stock price data (try cache first, then yfinance)
-    cached_rows = db.query(StockCache).filter(StockCache.ticker == ticker).order_by(StockCache.date.asc()).all()
+    # Try getting indicator-calculated stock history from cache first
+    history_record = db.query(StockHistoryCache).filter(
+        StockHistoryCache.ticker == ticker,
+        StockHistoryCache.period == "1y"
+    ).first()
     
-    if cached_rows and len(cached_rows) > 50:
-        df = pd.DataFrame([{
-            "Date": row.date,
-            "Open": row.open,
-            "High": row.high,
-            "Low": row.low,
-            "Close": row.close,
-            "Volume": row.volume,
-            "Stock": row.ticker
-        } for row in cached_rows])
-    else:
+    indicators_df = pd.DataFrame()
+    if history_record:
+        try:
+            last_updated_dt = datetime.strptime(history_record.last_updated, "%Y-%m-%d %H:%M:%S")
+            age_seconds = (datetime.now() - last_updated_dt).total_seconds()
+            if age_seconds < 43200: # 12 hours
+                history_list = json.loads(history_record.history_json)
+                indicators_df = pd.DataFrame(history_list)
+                logger.info(f"Loaded stock indicators from database cache for {ticker} recommendation.")
+        except Exception as cache_err:
+            logger.error(f"Error reading history cache for recommendation: {cache_err}")
+            
+    if indicators_df.empty:
+        # Fallback to fetching fresh data
         df = fetch_stock_data(ticker, period="1y")
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No price history found for {ticker} to calculate signals.")
             
-        # Clean MultiIndex columns if present
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
-    # Calculate indicators
-    indicators_df = calculate_technical_indicators(df)
-    if indicators_df.empty:
-        raise HTTPException(status_code=500, detail="Could not calculate indicators for recommendation.")
-        
+        # Calculate indicators
+        indicators_df = calculate_technical_indicators(df)
+        if indicators_df.empty:
+            raise HTTPException(status_code=500, detail="Could not calculate indicators for recommendation.")
+            
     latest_row = indicators_df.iloc[-1]
     current_price = float(latest_row["Close"])
     
@@ -853,6 +866,47 @@ def get_stock_recommendation(ticker: str, db: Session = Depends(get_db)):
         "predicted_change_pct": ((predicted_close - current_price) / current_price) * 100,
         "current_price": current_price,
         "signals": signals
+    }
+
+@app.get("/api/stock/{ticker}/dashboard")
+def get_stock_dashboard(ticker: str, period: str = "1y", db: Session = Depends(get_db)):
+    """
+    Unified dashboard endpoint that consolidates 4 separate calls:
+    1. Supported stocks + user watchlist
+    2. Real-time stock details, business profile, metrics, news (info)
+    3. Historical price and calculated technical indicators
+    4. Model prediction, RSI/MA/MACD signals, P/E & ROE valuation (recommendation)
+    """
+    ticker = ticker.strip().upper()
+    period = period.strip().lower()
+    
+    # 1. Fetch stocks list (similar to /api/stocks)
+    watchlist_items = db.query(Watchlist).all()
+    user_tickers = [item.ticker for item in watchlist_items]
+    all_tickers = sorted(list(set(DEFAULT_TICKERS + user_tickers)))
+    
+    # 2. Fetch stock info (similar to /api/stock/{ticker}/info)
+    info = get_cached_stock_info(ticker, db)
+    
+    # 3. Fetch stock history (similar to /api/stock/{ticker}/history)
+    try:
+        history = get_stock_history(ticker, period=period, db=db)
+    except Exception as e:
+        logger.error(f"Error fetching history for dashboard {ticker} ({period}): {e}")
+        history = []
+        
+    # 4. Fetch stock recommendation (similar to /api/stock/{ticker}/recommendation)
+    try:
+        recommendation = get_stock_recommendation(ticker, db=db)
+    except Exception as e:
+        logger.error(f"Error fetching recommendation for dashboard {ticker}: {e}")
+        recommendation = None
+        
+    return {
+        "tickers": all_tickers,
+        "info": info,
+        "history": history,
+        "recommendation": recommendation
     }
 
 # ==================== PORTFOLIO OPTIMIZATION ====================
