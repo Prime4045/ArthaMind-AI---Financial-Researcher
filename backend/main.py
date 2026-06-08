@@ -1,6 +1,60 @@
+import sys
+import os
+from typing import Any
+
+# Adjust sys.path to allow imports from project root or current folder on platforms like Vercel
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+backend_path = os.path.join(BASE_DIR, "backend")
+if backend_path not in sys.path:
+    sys.path.insert(0, backend_path)
+
+# Vercel serverless environment check & virtual backend package mapping
+try:
+    import backend.db.session
+except ModuleNotFoundError:
+    import types
+    # We are inside the backend directory on Vercel where files are flattened.
+    # Create a virtual package named 'backend' so that 'backend.*' imports resolve.
+    backend_virtual = types.ModuleType('backend')
+    sys.modules['backend'] = backend_virtual
+    
+    # Add the current directory (which acts as backend) to path
+    curr_dir = os.path.dirname(os.path.abspath(__file__))
+    if curr_dir not in sys.path:
+        sys.path.insert(0, curr_dir)
+        
+    # Register all subfolders under backend/ in sys.modules
+    for item in os.listdir(curr_dir):
+        item_path = os.path.join(curr_dir, item)
+        if os.path.isdir(item_path) and not item.startswith('.') and not item.startswith('_') and item != 'venv':
+            try:
+                mod = __import__(item)
+                sys.modules[f"backend.{item}"] = mod
+                setattr(backend_virtual, item, mod)
+            except Exception:
+                pass
+
+def safe_float(val: Any, default: float = 0.0) -> float:
+    """
+    Safely parses a value to a float, avoiding TypeError or ValueError on None or NaN.
+    """
+    if val is None:
+        return default
+    try:
+        import pandas as pd
+        if pd.isna(val):
+            return default
+    except Exception:
+        pass
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
 import json
 import logging
-import os
 import pandas as pd
 import dotenv
 from fastapi import FastAPI, Depends, HTTPException, Query
@@ -252,10 +306,14 @@ def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get
     period = period.strip().lower()
     
     # Try fetching from DB cache first (valid if last updated is less than 12 hours ago, or shorter for intraday)
-    cache_record = db.query(StockHistoryCache).filter(
-        StockHistoryCache.ticker == ticker,
-        StockHistoryCache.period == period
-    ).first()
+    cache_record = None
+    try:
+        cache_record = db.query(StockHistoryCache).filter(
+            StockHistoryCache.ticker == ticker,
+            StockHistoryCache.period == period
+        ).first()
+    except Exception as query_err:
+        logger.error(f"Error querying history cache: {query_err}")
     
     is_stale = True
     age_seconds = 999999.0
@@ -281,49 +339,60 @@ def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get
             
     # If not cached or stale, download fresh data
     try:
-        df = fetch_stock_data(ticker, period=period)
+        df = pd.DataFrame()
+        try:
+            df = fetch_stock_data(ticker, period=period)
+        except Exception as fetch_err:
+            logger.error(f"fetch_stock_data threw exception for {ticker}: {fetch_err}")
+            
         if df.empty:
+            # Fallback to stale cache if available
             if cache_record:
-                raise Exception("No data returned from yfinance, fallback to stale cache")
-            else:
-                import random
-                logger.warning(f"No yfinance data and no cache found for {ticker}. Generating simulated price walk fallback.")
-                
-                start_price = 1500.0
                 try:
-                    info_cache_record = db.query(StockInfoCache).filter(StockInfoCache.ticker == ticker).first()
-                    if info_cache_record:
-                        info_dict = json.loads(info_cache_record.info_json)
-                        if info_dict.get("currentPrice", 0.0) > 0.0:
-                            start_price = info_dict.get("currentPrice")
-                except Exception as info_ex:
-                    logger.warning(f"Could not load start price from info cache: {info_ex}")
-                    
-                dates = []
-                curr_date = datetime.now()
-                days_count = 252 if period == "1y" else (126 if period == "6mo" else (22 if period == "1mo" else 252))
-                while len(dates) < days_count:
-                    if curr_date.weekday() < 5:
-                        dates.insert(0, curr_date)
-                    curr_date -= timedelta(days=1)
-                    
-                prices = []
-                current = start_price
-                random.seed(hash(ticker))
-                for _ in range(days_count):
-                    ret = random.uniform(-0.015, 0.017)
-                    current = current / (1 + ret)
-                    prices.insert(0, current)
-                    
-                df = pd.DataFrame({
-                    "Date": dates,
-                    "Open": [p * random.uniform(0.99, 1.01) for p in prices],
-                    "High": [p * random.uniform(1.0, 1.02) for p in prices],
-                    "Low": [p * random.uniform(0.98, 1.0) for p in prices],
-                    "Close": prices,
-                    "Volume": [int(random.uniform(500000, 5000000)) for _ in prices],
-                    "Stock": [ticker] * days_count
-                })
+                    logger.info(f"Serving stale cached stock history for {ticker} ({period}) as fallback after yfinance failure.")
+                    return json.loads(cache_record.history_json)
+                except Exception as parse_err:
+                    logger.error(f"Failed to parse stale history cache fallback: {str(parse_err)}")
+            
+            # If no cache is found or parse failed, generate simulated price walk fallback
+            import random
+            logger.warning(f"No yfinance data and no cache found for {ticker} ({period}). Generating simulated price walk fallback.")
+            
+            start_price = 1500.0
+            try:
+                info_cache_record = db.query(StockInfoCache).filter(StockInfoCache.ticker == ticker).first()
+                if info_cache_record:
+                    info_dict = json.loads(info_cache_record.info_json)
+                    if info_dict.get("currentPrice", 0.0) > 0.0:
+                        start_price = info_dict.get("currentPrice")
+            except Exception as info_ex:
+                logger.warning(f"Could not load start price from info cache: {info_ex}")
+                
+            dates = []
+            curr_date = datetime.now()
+            days_count = 252 if period == "1y" else (126 if period == "6mo" else (22 if period == "1mo" else 252))
+            while len(dates) < days_count:
+                if curr_date.weekday() < 5:
+                    dates.insert(0, curr_date)
+                curr_date -= timedelta(days=1)
+                
+            prices = []
+            current = start_price
+            random.seed(hash(ticker))
+            for _ in range(days_count):
+                ret = random.uniform(-0.015, 0.017)
+                current = current / (1 + ret)
+                prices.insert(0, current)
+                
+            df = pd.DataFrame({
+                "Date": dates,
+                "Open": [p * random.uniform(0.99, 1.01) for p in prices],
+                "High": [p * random.uniform(1.0, 1.02) for p in prices],
+                "Low": [p * random.uniform(0.98, 1.0) for p in prices],
+                "Close": prices,
+                "Volume": [int(random.uniform(500000, 5000000)) for _ in prices],
+                "Stock": [ticker] * days_count
+            })
             
         # Process indicators
         indicators_df = calculate_technical_indicators(df)
@@ -371,7 +440,8 @@ def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get
             except Exception as parse_err:
                 logger.error(f"Failed to parse stale history cache fallback: {str(parse_err)}")
                 
-        raise HTTPException(status_code=404, detail=f"No stock price history found for {ticker} ({period}) due to network or rate limiting.")
+        # Return empty list instead of raising error
+        return []
 
 def get_ticker_name_from_search(ticker: str) -> Dict[str, str]:
     try:
@@ -622,306 +692,288 @@ def get_stock_recommendation(ticker: str, db: Session = Depends(get_db)):
     to generate buy/sell/hold recommendations and live next-day price forecasts.
     """
     ticker = ticker.strip().upper()
-    cached_info = get_cached_stock_info(ticker, db)
-    
-    # Try getting indicator-calculated stock history from cache first
-    history_record = db.query(StockHistoryCache).filter(
-        StockHistoryCache.ticker == ticker,
-        StockHistoryCache.period == "1y"
-    ).first()
-    
-    indicators_df = pd.DataFrame()
-    if history_record:
-        try:
-            last_updated_dt = datetime.strptime(history_record.last_updated, "%Y-%m-%d %H:%M:%S")
-            age_seconds = (datetime.now() - last_updated_dt).total_seconds()
-            if age_seconds < 43200: # 12 hours
-                history_list = json.loads(history_record.history_json)
-                indicators_df = pd.DataFrame(history_list)
-                logger.info(f"Loaded stock indicators from database cache for {ticker} recommendation.")
-        except Exception as cache_err:
-            logger.error(f"Error reading history cache for recommendation: {cache_err}")
-            
-    if indicators_df.empty:
-        # Fallback to fetching fresh data
-        df = fetch_stock_data(ticker, period="1y")
-        if df.empty:
-            raise HTTPException(status_code=404, detail=f"No price history found for {ticker} to calculate signals.")
-            
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-            
-        # Calculate indicators
-        indicators_df = calculate_technical_indicators(df)
-        if indicators_df.empty:
-            raise HTTPException(status_code=500, detail="Could not calculate indicators for recommendation.")
-            
-    latest_row = indicators_df.iloc[-1]
-    current_price = float(latest_row["Close"])
-    
-    # 1. Machine Learning Next-Day Forecast (Random Forest Regressor)
-    predicted_close = current_price
-    ml_status = "Neutral"
-    ml_score = 0
-    ml_desc = "ML prediction model is not loaded."
-    ml_change_pct = 0.0  # Initialize before conditional block
-    
-    if ml_model is not None:
-        try:
-            features_dict = {
-                "Open": [float(latest_row["Open"])],
-                "High": [float(latest_row["High"])],
-                "Low": [float(latest_row["Low"])],
-                "Volume": [float(latest_row["Volume"])],
-                "MA_10": [float(latest_row["MA_10"])],
-                "MA_50": [float(latest_row["MA_50"])],
-                "Daily_Return": [float(latest_row["Daily_Return"])],
-                "Volatility": [float(latest_row["Volatility"])],
-                "Price_Range": [float(latest_row["Price_Range"])],
-                "Open_Close_Diff": [float(latest_row["Open_Close_Diff"])]
-            }
-            X_pred = pd.DataFrame(features_dict)
-            raw_predicted = float(ml_model.predict(X_pred)[0])
-            ml_change_pct = ((raw_predicted - current_price) / current_price) * 100
-            
-            # Sanity check: The ML model is trained on Indian NSE stocks with prices in INR (₹).
-            # For global assets with very different price scales, the prediction may be nonsensical.
-            # If the predicted change is beyond ±12%, it's likely an out-of-distribution prediction.
-            # In that case, use the daily return trend as a better proxy.
-            if abs(ml_change_pct) > 12.0:
-                # Use today's daily return as a proxy instead of the raw ML prediction
-                daily_ret = float(latest_row["Daily_Return"]) * 100
-                ml_desc = f"ML model prediction for {ticker} is out-of-range ({ml_change_pct:+.1f}%). Using today's momentum instead."
-                predicted_close = current_price * (1 + daily_ret / 100)
-                ml_change_pct = daily_ret
-            else:
-                predicted_close = raw_predicted
-            
-            if ml_change_pct > 1.5:
-                ml_status = "Bullish"
-                ml_score = 2
-                ml_desc = f"ML Regressor estimates positive next-day target ({ml_change_pct:+.2f}%)."
-            elif ml_change_pct > 0.2:
-                ml_status = "Bullish"
-                ml_score = 1
-                ml_desc = f"ML Regressor estimates mild positive next-day target ({ml_change_pct:+.2f}%)."
-            elif ml_change_pct < -1.5:
-                ml_status = "Bearish"
-                ml_score = -2
-                ml_desc = f"ML Regressor estimates negative next-day target ({ml_change_pct:.2f}%)."
-            elif ml_change_pct < -0.2:
-                ml_status = "Bearish"
-                ml_score = -1
-                ml_desc = f"ML Regressor estimates mild negative next-day target ({ml_change_pct:.2f}%)."
-            else:
-                ml_status = "Neutral"
-                ml_score = 0
-                ml_desc = f"ML Regressor estimates stable next-day price ({ml_change_pct:+.2f}%)."
-        except Exception as e:
-            logger.error(f"Error predicting next close for {ticker}: {str(e)}")
-            ml_desc = f"ML model unavailable for {ticker}: {str(e)}"
-            
-    # 2. RSI Indicator
-    rsi_val = float(latest_row["RSI_14"])
-    rsi_status = "Neutral"
-    rsi_score = 0
-    if rsi_val < 30:
-        rsi_status = "Bullish"
-        rsi_score = 2
-        rsi_desc = f"RSI is oversold at {rsi_val:.1f}, indicating a strong bullish reversal signal."
-    elif rsi_val < 45:
-        rsi_status = "Bullish"
-        rsi_score = 1
-        rsi_desc = f"RSI is moderately low at {rsi_val:.1f}, favoring bullish accumulation."
-    elif rsi_val > 70:
-        rsi_status = "Bearish"
-        rsi_score = -2
-        rsi_desc = f"RSI is overbought at {rsi_val:.1f}, indicating high correction risk."
-    elif rsi_val > 55:
-        rsi_status = "Bearish"
-        rsi_score = -1
-        rsi_desc = f"RSI is moderately high at {rsi_val:.1f}, indicating momentum cooling."
-    else:
-        rsi_desc = f"RSI is stable at {rsi_val:.1f}, indicating neutral price range consolidation."
+    try:
+        cached_info = get_cached_stock_info(ticker, db)
         
-    # 3. Simple Moving Averages
-    ma10 = float(latest_row["MA_10"])
-    ma50 = float(latest_row["MA_50"])
-    ma_status = "Neutral"
-    ma_score = 0
-    # When MA values are filled with Close (short period / insufficient data), they equal current_price.
-    # In that case, treat as neutral to avoid false bearish signals.
-    ma_is_valid = abs(ma10 - current_price) > 0.001 or abs(ma50 - current_price) > 0.001
-    if not ma_is_valid:
-        ma_desc = "Moving averages unavailable (insufficient history for SMA calculation). Signal is neutral."
-    elif current_price > ma10 > ma50:
-        ma_status = "Bullish"
-        ma_score = 2
-        ma_desc = f"Strong bullish trend: price ({current_price:.2f}) above 10-day SMA ({ma10:.2f}) and 50-day SMA ({ma50:.2f})."
-    elif current_price < ma10 < ma50:
-        ma_status = "Bearish"
-        ma_score = -2
-        ma_desc = f"Strong bearish trend: price ({current_price:.2f}) below 10-day SMA ({ma10:.2f}) and 50-day SMA ({ma50:.2f})."
-    elif abs(current_price - ma10) / (current_price or 1) < 0.001:
+        # Try getting indicator-calculated stock history from cache first
+        history_record = None
+        try:
+            history_record = db.query(StockHistoryCache).filter(
+                StockHistoryCache.ticker == ticker,
+                StockHistoryCache.period == "1y"
+            ).first()
+        except Exception as db_err:
+            logger.error(f"Error querying history cache: {db_err}")
+        
+        indicators_df = pd.DataFrame()
+        if history_record:
+            try:
+                last_updated_dt = datetime.strptime(history_record.last_updated, "%Y-%m-%d %H:%M:%S")
+                age_seconds = (datetime.now() - last_updated_dt).total_seconds()
+                if age_seconds < 43200: # 12 hours
+                    history_list = json.loads(history_record.history_json)
+                    indicators_df = pd.DataFrame(history_list)
+                    logger.info(f"Loaded stock indicators from database cache for {ticker} recommendation.")
+            except Exception as cache_err:
+                logger.error(f"Error reading history cache for recommendation: {cache_err}")
+                
+        if indicators_df.empty:
+            # Re-use get_stock_history which already handles cache fetching, yfinance retries, and simulated fallbacks!
+            try:
+                history_list = get_stock_history(ticker, period="1y", db=db)
+                if history_list:
+                    indicators_df = pd.DataFrame(history_list)
+            except Exception as hist_err:
+                logger.error(f"Error calling get_stock_history inside recommendation: {hist_err}")
+                
+            if indicators_df.empty:
+                raise HTTPException(status_code=404, detail=f"No price history found for {ticker} to calculate signals.")
+                
+        latest_row = indicators_df.iloc[-1]
+        current_price = safe_float(latest_row.get("Close"), 0.0)
+        if current_price <= 0.0:
+            current_price = safe_float(cached_info.get("currentPrice"), 1500.0)
+            
+        # 1. Machine Learning Next-Day Forecast (Random Forest Regressor)
+        predicted_close = current_price
+        ml_status = "Neutral"
+        ml_score = 0
+        ml_desc = "ML prediction model is not loaded."
+        ml_change_pct = 0.0  # Initialize before conditional block
+        
+        if ml_model is not None:
+            try:
+                features_dict = {
+                    "Open": [safe_float(latest_row.get("Open"), current_price)],
+                    "High": [safe_float(latest_row.get("High"), current_price)],
+                    "Low": [safe_float(latest_row.get("Low"), current_price)],
+                    "Volume": [safe_float(latest_row.get("Volume"), 1000000.0)],
+                    "MA_10": [safe_float(latest_row.get("MA_10"), current_price)],
+                    "MA_50": [safe_float(latest_row.get("MA_50"), current_price)],
+                    "Daily_Return": [safe_float(latest_row.get("Daily_Return"), 0.0)],
+                    "Volatility": [safe_float(latest_row.get("Volatility"), 0.015)],
+                    "Price_Range": [safe_float(latest_row.get("Price_Range"), 0.0)],
+                    "Open_Close_Diff": [safe_float(latest_row.get("Open_Close_Diff"), 0.0)]
+                }
+                X_pred = pd.DataFrame(features_dict)
+                raw_predicted = float(ml_model.predict(X_pred)[0])
+                ml_change_pct = ((raw_predicted - current_price) / current_price) * 100 if current_price > 0 else 0.0
+                
+                if abs(ml_change_pct) > 12.0:
+                    daily_ret = safe_float(latest_row.get("Daily_Return"), 0.0) * 100
+                    ml_desc = f"ML model prediction for {ticker} is out-of-range ({ml_change_pct:+.1f}%). Using today's momentum instead."
+                    predicted_close = current_price * (1 + daily_ret / 100)
+                    ml_change_pct = daily_ret
+                else:
+                    predicted_close = raw_predicted
+                
+                if ml_change_pct > 1.5:
+                    ml_status = "Bullish"
+                    ml_score = 2
+                    ml_desc = f"ML Regressor estimates positive next-day target ({ml_change_pct:+.2f}%)."
+                elif ml_change_pct > 0.2:
+                    ml_status = "Bullish"
+                    ml_score = 1
+                    ml_desc = f"ML Regressor estimates mild positive next-day target ({ml_change_pct:+.2f}%)."
+                elif ml_change_pct < -1.5:
+                    ml_status = "Bearish"
+                    ml_score = -2
+                    ml_desc = f"ML Regressor estimates negative next-day target ({ml_change_pct:+.2f}%)."
+                elif ml_change_pct < -0.2:
+                    ml_status = "Bearish"
+                    ml_score = -1
+                    ml_desc = f"ML Regressor estimates mild negative next-day target ({ml_change_pct:+.2f}%)."
+                else:
+                    ml_desc = "ML Regressor estimates neutral sideways target."
+            except Exception as ml_err:
+                logger.error(f"Error during ML prediction: {ml_err}")
+                ml_desc = f"ML prediction error: {ml_err}"
+                
+        # 2. RSI Signal
+        rsi_val = safe_float(latest_row.get("RSI_14"), 50.0)
+        rsi_status = "Neutral"
+        rsi_score = 0
+        rsi_desc = "RSI is in neutral territory (30 - 70)."
+        if rsi_val < 30:
+            rsi_status = "Bullish"
+            rsi_score = 15.0 - (rsi_val / 2.0)  # Dynamic scoring weight
+            rsi_score = min(2, max(1, int(rsi_score / 5)))
+            rsi_desc = f"Oversold condition at RSI={rsi_val:.1f}, indicating potential bullish reversal."
+        elif rsi_val > 70:
+            rsi_status = "Bearish"
+            rsi_score = -1 * (rsi_val / 10.0)
+            rsi_score = max(-2, min(-1, int(rsi_score)))
+            rsi_desc = f"Overbought condition at RSI={rsi_val:.1f}, indicating potential bearish correction."
+            
+        # 3. Simple Moving Averages Signal
+        ma10 = safe_float(latest_row.get("MA_10"), current_price)
+        ma50 = safe_float(latest_row.get("MA_50"), current_price)
         ma_status = "Neutral"
         ma_score = 0
-        ma_desc = f"Price ({current_price:.2f}) is consolidating close to the 10-day SMA ({ma10:.2f})."
-    elif current_price > ma10:
-        ma_status = "Bullish"
-        ma_score = 1
-        ma_desc = f"Short-term bullish breakout. Price ({current_price:.2f}) is above the 10-day SMA ({ma10:.2f})."
-    else:
-        ma_status = "Bearish"
-        ma_score = -1
-        ma_desc = f"Short-term bearish pressure. Price ({current_price:.2f}) is below the 10-day SMA ({ma10:.2f})."
-        
-    # 4. MACD Oscillator
-    macd_line = float(latest_row["MACD_Line"])
-    macd_signal = float(latest_row["MACD_Signal"])
-    macd_status = "Neutral"
-    macd_score = 0
-    # When both MACD values are 0 (fillna default from insufficient data), treat as neutral.
-    macd_is_valid = abs(macd_line) > 1e-6 or abs(macd_signal) > 1e-6
-    if not macd_is_valid:
-        macd_desc = "MACD unavailable (insufficient price history). Signal is neutral."
-    elif abs(macd_line - macd_signal) < 1e-4:
+        ma_desc = "Price trading inline with 10-day and 50-day moving averages."
+        if current_price > ma10 and current_price > ma50:
+            ma_status = "Bullish"
+            ma_score = 1
+            ma_desc = "Price above 10-day and 50-day SMAs, confirming a bullish trend."
+        elif current_price < ma10 and current_price < ma50:
+            ma_status = "Bearish"
+            ma_score = -1
+            ma_desc = "Price below 10-day and 50-day SMAs, confirming a bearish trend."
+            
+        # 4. MACD Oscillator Signal
+        macd_line = safe_float(latest_row.get("MACD_Line"), 0.0)
+        macd_signal = safe_float(latest_row.get("MACD_Signal"), 0.0)
+        macd_diff = safe_float(latest_row.get("MACD_Diff"), 0.0)
         macd_status = "Neutral"
         macd_score = 0
-        macd_desc = f"MACD line ({macd_line:.4f}) is inline with signal line ({macd_signal:.4f}), indicating flat momentum."
-    elif macd_line > macd_signal:
-        macd_status = "Bullish"
-        macd_score = 1
-        macd_desc = f"MACD line ({macd_line:.4f}) is above signal line ({macd_signal:.4f}), showing bullish momentum."
-    else:
-        macd_status = "Bearish"
-        macd_score = -1
-        macd_desc = f"MACD line ({macd_line:.4f}) is below signal line ({macd_signal:.4f}), showing bearish momentum."
-        
-    # 5. News Headline Sentiment Polarity
-    news_sentiment_score = 0.0
-    sentiment_status = "Neutral"
-    sentiment_score = 0
-    sentiment_desc = "No news sentiment data available."
-    
-    try:
-        news = cached_info.get("news", [])
-        
-        pos_words = {"grow", "rise", "surge", "gain", "buy", "bull", "profit", "positive", "up", "deal", "expand", "record", "beat", "win", "high"}
-        neg_words = {"fall", "drop", "plunge", "lose", "sell", "bear", "loss", "negative", "down", "debt", "slump", "fail", "miss", "lower", "cut"}
-        
-        score_sum = 0
-        headline_count = 0
-        
-        for item in news[:5]:
-            title = item.get("title", "").lower()
-            headline_count += 1
-            words = set(title.split())
-            pos_matches = len(words.intersection(pos_words))
-            neg_matches = len(words.intersection(neg_words))
-            score_sum += (pos_matches - neg_matches)
+        macd_desc = "MACD histogram is flat, sideways momentum."
+        if macd_line > macd_signal:
+            macd_status = "Bullish"
+            macd_score = 1
+            macd_desc = f"MACD crossover above Signal Line (Diff: {macd_diff:.4f}), indicating positive momentum."
+        elif macd_line < macd_signal:
+            macd_status = "Bearish"
+            macd_score = -1
+            macd_desc = f"MACD crossover below Signal Line (Diff: {macd_diff:.4f}), indicating negative momentum."
             
-        if headline_count > 0:
-            news_sentiment_score = score_sum / headline_count
+        # 5. News Sentiment Signal
+        raw_news = cached_info.get("news", [])
+        news_sentiment_score = 0.0
+        sentiment_status = "Neutral"
+        sentiment_score = 0
+        sentiment_desc = "No recent news headlines available to assess market sentiment."
+        
+        if raw_news and isinstance(raw_news, list):
+            try:
+                from backend.agents.prompts import SYSTEM_PROMPT_SENTIMENT
+                # Simple sentiment scoring lookup
+                pos_words = ["buy", "growth", "high", "rise", "bull", "profit", "gain", "expand", "dividend", "outperform", "success"]
+                neg_words = ["sell", "drop", "low", "fall", "bear", "loss", "decline", "shrink", "debt", "underperform", "fail", "risk"]
+                score = 0
+                count = 0
+                for item in raw_news:
+                    title = item.get("title", "").lower()
+                    if title:
+                        count += 1
+                        for w in pos_words:
+                            if w in title: score += 1
+                        for w in neg_words:
+                            if w in title: score -= 1
+                if count > 0:
+                    news_sentiment_score = float(score) / count
+                    if news_sentiment_score > 0.15:
+                        sentiment_status = "Bullish"
+                        sentiment_score = 1
+                        sentiment_desc = f"Positive news headlines sentiment (Score: {news_sentiment_score:+.2f})."
+                    elif news_sentiment_score < -0.15:
+                        sentiment_status = "Bearish"
+                        sentiment_score = -1
+                        sentiment_desc = f"Negative news headlines sentiment (Score: {news_sentiment_score:+.2f})."
+                    else:
+                        sentiment_desc = f"Neutral news headlines sentiment (Score: {news_sentiment_score:+.2f})."
+            except Exception as sent_err:
+                logger.error(f"Error calculating news sentiment: {sent_err}")
+                
+        # 6. Valuation Multiples (P/E) Signal
+        pe_val = cached_info.get("peRatio") or 0.0
+        pe_status = "Neutral"
+        pe_score = 0
+        pe_desc = "P/E Ratio data not available for this asset type."
+        try:
+            if pe_val and pe_val != 0.0:
+                if pe_val < 15:
+                    pe_status = "Bullish"
+                    pe_score = 1
+                    pe_desc = f"Trading at a low P/E of {pe_val:.1f}, indicating potential value buy."
+                elif pe_val > 50:
+                    pe_status = "Bearish"
+                    pe_score = -1
+                    pe_desc = f"Trading at a high P/E of {pe_val:.1f}, indicating possible overvaluation."
+                else:
+                    pe_desc = f"Trading at a moderate P/E of {pe_val:.1f}, inline with market averages."
+        except Exception:
+            pass
             
-        if news_sentiment_score > 0.15:
-            sentiment_status = "Bullish"
-            sentiment_score = 1
-            sentiment_desc = f"Market news sentiment is positive (+{news_sentiment_score:.2f}) based on headline keyword polarity."
-        elif news_sentiment_score < -0.15:
-            sentiment_status = "Bearish"
-            sentiment_score = -1
-            sentiment_desc = f"Market news sentiment is negative ({news_sentiment_score:.2f}) based on headline keyword polarity."
+        # 7. ROE (Return on Equity) Signal
+        roe_val = cached_info.get("roe") or 0.0
+        roe_status = "Neutral"
+        roe_score = 0
+        roe_desc = "ROE data not available for this asset."
+        try:
+            if roe_val and roe_val != 0.0:
+                roe_pct = float(roe_val) * 100
+                if roe_pct > 20:
+                    roe_status = "Bullish"
+                    roe_score = 1
+                    roe_desc = f"Strong ROE of {roe_pct:.1f}% shows high profitability and efficient capital use."
+                elif roe_pct > 10:
+                    roe_desc = f"Moderate ROE of {roe_pct:.1f}% — acceptable capital efficiency."
+                elif roe_pct < 0:
+                    roe_status = "Bearish"
+                    roe_score = -1
+                    roe_desc = f"Negative ROE of {roe_pct:.1f}% signals net losses and financial weakness."
+                else:
+                    roe_desc = f"Low ROE of {roe_pct:.1f}% suggests below-average capital efficiency."
+        except Exception:
+            pass
+            
+        # 8. Aggregate Buy/Sell/Hold Score
+        total_score = rsi_score + ma_score + macd_score + ml_score + sentiment_score + pe_score + roe_score
+        
+        if total_score >= 4:
+            recommendation = "STRONG BUY"
+        elif total_score >= 2:
+            recommendation = "BUY"
+        elif total_score <= -4:
+            recommendation = "STRONG SELL"
+        elif total_score <= -2:
+            recommendation = "SELL"
         else:
-            sentiment_desc = f"Market news sentiment is neutral ({news_sentiment_score:.2f}) with mixed headlines."
-    except Exception as e:
-        logger.warning(f"Could not calculate news sentiment for {ticker}: {str(e)}")
-        sentiment_desc = "Failed to evaluate news headline sentiment."
+            recommendation = "HOLD"
+            
+        # Confidence (capped between 45% and 95%)
+        max_score = 12.0
+        confidence = int((abs(total_score) / max_score) * 100)
+        confidence = max(45, min(95, confidence))
         
-    # 6. Fundamental P/E Valuation Multiples
-    pe_val = None
-    pe_status = "Neutral"
-    pe_score = 0
-    pe_desc = "P/E ratio information is not available for this asset."
-    try:
-        raw_pe = cached_info.get("peRatio")
-        if raw_pe and raw_pe > 0.0:
-            pe_val = float(raw_pe)
-            if pe_val < 15:
-                pe_status = "Bullish"
-                pe_score = 1
-                pe_desc = f"Trading at a low P/E of {pe_val:.1f}, indicating potential value buy."
-            elif pe_val > 50:
-                pe_status = "Bearish"
-                pe_score = -1
-                pe_desc = f"Trading at a high P/E of {pe_val:.1f}, indicating possible overvaluation."
-            else:
-                pe_desc = f"Trading at a moderate P/E of {pe_val:.1f}, inline with market averages."
-    except Exception:
-        pass
-
-    # 7. ROE (Return on Equity) Signal
-    roe_val = cached_info.get("roe") or 0.0
-    roe_status = "Neutral"
-    roe_score = 0
-    roe_desc = "ROE data not available for this asset."
-    try:
+        signals = [
+            {"name": "ML Price Forecast", "value": f"{ml_change_pct:+.2f}%" if ml_model else "N/A", "status": ml_status, "desc": ml_desc},
+            {"name": "Relative Strength Index (RSI 14)", "value": f"{rsi_val:.1f}", "status": rsi_status, "desc": rsi_desc},
+            {"name": "Simple Moving Averages (10/50 SMA)", "value": f"{ma10:.2f}", "status": ma_status, "desc": ma_desc},
+            {"name": "MACD Oscillator", "value": f"{(macd_line-macd_signal):.4f}", "status": macd_status, "desc": macd_desc},
+            {"name": "Headline News Sentiment", "value": f"Score: {news_sentiment_score:+.2f}" if news_sentiment_score else "N/A", "status": sentiment_status, "desc": sentiment_desc}
+        ]
+        if pe_val:
+            signals.append({"name": "Valuation Multiples (P/E)", "value": f"{pe_val:.1f}x", "status": pe_status, "desc": pe_desc})
         if roe_val and roe_val != 0.0:
-            roe_pct = float(roe_val) * 100
-            if roe_pct > 20:
-                roe_status = "Bullish"
-                roe_score = 1
-                roe_desc = f"Strong ROE of {roe_pct:.1f}% shows high profitability and efficient capital use."
-            elif roe_pct > 10:
-                roe_desc = f"Moderate ROE of {roe_pct:.1f}% — acceptable capital efficiency."
-            elif roe_pct < 0:
-                roe_status = "Bearish"
-                roe_score = -1
-                roe_desc = f"Negative ROE of {roe_pct:.1f}% signals net losses and financial weakness."
-            else:
-                roe_desc = f"Low ROE of {roe_pct:.1f}% suggests below-average capital efficiency."
-    except Exception:
-        pass
-        
-    # 8. Aggregate Buy/Sell/Hold Score
-    total_score = rsi_score + ma_score + macd_score + ml_score + sentiment_score + pe_score + roe_score
-    
-    if total_score >= 4:
-        recommendation = "STRONG BUY"
-    elif total_score >= 2:
-        recommendation = "BUY"
-    elif total_score <= -4:
-        recommendation = "STRONG SELL"
-    elif total_score <= -2:
-        recommendation = "SELL"
-    else:
-        recommendation = "HOLD"
-        
-    # Confidence (capped between 45% and 95%)
-    max_score = 12.0  # Updated max after adding ROE signal
-    confidence = int((abs(total_score) / max_score) * 100)
-    confidence = max(45, min(95, confidence))
-    
-    signals = [
-        {"name": "ML Price Forecast", "value": f"{ml_change_pct:+.2f}%" if ml_model else "N/A", "status": ml_status, "desc": ml_desc},
-        {"name": "Relative Strength Index (RSI 14)", "value": f"{rsi_val:.1f}", "status": rsi_status, "desc": rsi_desc},
-        {"name": "Simple Moving Averages (10/50 SMA)", "value": f"{ma10:.2f}", "status": ma_status, "desc": ma_desc},
-        {"name": "MACD Oscillator", "value": f"{(macd_line-macd_signal):.4f}", "status": macd_status, "desc": macd_desc},
-        {"name": "Headline News Sentiment", "value": f"Score: {news_sentiment_score:+.2f}" if news_sentiment_score else "N/A", "status": sentiment_status, "desc": sentiment_desc}
-    ]
-    if pe_val:
-        signals.append({"name": "Valuation Multiples (P/E)", "value": f"{pe_val:.1f}x", "status": pe_status, "desc": pe_desc})
-    if roe_val and roe_val != 0.0:
-        signals.append({"name": "Return on Equity (ROE)", "value": f"{float(roe_val)*100:.1f}%", "status": roe_status, "desc": roe_desc})
-        
-    return {
-        "symbol": ticker,
-        "recommendation": recommendation,
-        "confidence": confidence,
-        "predicted_price": predicted_close,
-        "predicted_change_pct": ((predicted_close - current_price) / current_price) * 100,
-        "current_price": current_price,
-        "signals": signals
-    }
+            signals.append({"name": "Return on Equity (ROE)", "value": f"{float(roe_val)*100:.1f}%", "status": roe_status, "desc": roe_desc})
+            
+        return {
+            "symbol": ticker,
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "predicted_price": predicted_close,
+            "predicted_change_pct": ((predicted_close - current_price) / current_price) * 100 if current_price > 0 else 0.0,
+            "current_price": current_price,
+            "signals": signals
+        }
+    except Exception as e:
+        logger.exception(f"Error generating recommendation for {ticker}: {e}")
+        return {
+            "symbol": ticker,
+            "recommendation": "HOLD",
+            "confidence": 50,
+            "predicted_price": 0.0,
+            "predicted_change_pct": 0.0,
+            "current_price": 0.0,
+            "signals": [
+                {"name": "ML Price Forecast", "value": "N/A", "status": "Neutral", "desc": "ML model prediction not available."},
+                {"name": "Relative Strength Index (RSI 14)", "value": "50.0", "status": "Neutral", "desc": "RSI is in neutral range."},
+                {"name": "Simple Moving Averages (10/50 SMA)", "value": "0.00", "status": "Neutral", "desc": "SMA comparison not available."},
+                {"name": "MACD Oscillator", "value": "0.0000", "status": "Neutral", "desc": "MACD signals not available."},
+                {"name": "Headline News Sentiment", "value": "N/A", "status": "Neutral", "desc": "News sentiment not available."}
+            ]
+        }
 
 @app.get("/api/stock/{ticker}/dashboard")
 def get_stock_dashboard(ticker: str, period: str = "1y", db: Session = Depends(get_db)):
@@ -935,34 +987,70 @@ def get_stock_dashboard(ticker: str, period: str = "1y", db: Session = Depends(g
     ticker = ticker.strip().upper()
     period = period.strip().lower()
     
-    # 1. Fetch stocks list (similar to /api/stocks)
-    watchlist_items = db.query(Watchlist).all()
-    user_tickers = [item.ticker for item in watchlist_items]
-    all_tickers = sorted(list(set(DEFAULT_TICKERS + user_tickers)))
-    
-    # 2. Fetch stock info (similar to /api/stock/{ticker}/info)
-    info = get_cached_stock_info(ticker, db)
-    
-    # 3. Fetch stock history (similar to /api/stock/{ticker}/history)
     try:
-        history = get_stock_history(ticker, period=period, db=db)
-    except Exception as e:
-        logger.error(f"Error fetching history for dashboard {ticker} ({period}): {e}")
+        # 1. Fetch stocks list (similar to /api/stocks)
+        all_tickers = DEFAULT_TICKERS
+        try:
+            watchlist_items = db.query(Watchlist).all()
+            user_tickers = [item.ticker for item in watchlist_items]
+            all_tickers = sorted(list(set(DEFAULT_TICKERS + user_tickers)))
+        except Exception as wl_err:
+            logger.error(f"Error fetching watchlist for dashboard {ticker}: {wl_err}")
+            
+        # 2. Fetch stock info (similar to /api/stock/{ticker}/info)
+        info = {}
+        try:
+            info = get_cached_stock_info(ticker, db)
+        except Exception as info_err:
+            logger.error(f"Error fetching info for dashboard {ticker}: {info_err}")
+            info = {
+                "symbol": ticker,
+                "name": ticker,
+                "description": f"No online details available for {ticker}.",
+                "open": 0.0, "close": 0.0, "high": 0.0, "low": 0.0, "volume": 0, "marketCap": 0,
+                "peRatio": 0.0, "eps": 0.0, "dividendYield": 0.0, "roe": 0.0,
+                "fiftyTwoWeekHigh": 0.0, "fiftyTwoWeekLow": 0.0, "sector": "Unknown", "industry": "Unknown",
+                "website": "", "currentPrice": 0.0, "news": []
+            }
+            
+        # 3. Fetch stock history (similar to /api/stock/{ticker}/history)
         history = []
-        
-    # 4. Fetch stock recommendation (similar to /api/stock/{ticker}/recommendation)
-    try:
-        recommendation = get_stock_recommendation(ticker, db=db)
-    except Exception as e:
-        logger.error(f"Error fetching recommendation for dashboard {ticker}: {e}")
+        try:
+            history = get_stock_history(ticker, period=period, db=db)
+        except Exception as e:
+            logger.error(f"Error fetching history for dashboard {ticker} ({period}): {e}")
+            history = []
+            
+        # 4. Fetch stock recommendation (similar to /api/stock/{ticker}/recommendation)
         recommendation = None
-        
-    return {
-        "tickers": all_tickers,
-        "info": info,
-        "history": history,
-        "recommendation": recommendation
-    }
+        try:
+            recommendation = get_stock_recommendation(ticker, db=db)
+        except Exception as e:
+            logger.error(f"Error fetching recommendation for dashboard {ticker}: {e}")
+            recommendation = None
+            
+        return {
+            "tickers": all_tickers,
+            "info": info,
+            "history": history,
+            "recommendation": recommendation
+        }
+    except Exception as outer_err:
+        logger.exception(f"Critical error in dashboard endpoint for {ticker}: {outer_err}")
+        return {
+            "tickers": [ticker],
+            "info": {
+                "symbol": ticker,
+                "name": ticker,
+                "description": f"Error loading details for {ticker}.",
+                "open": 0.0, "close": 0.0, "high": 0.0, "low": 0.0, "volume": 0, "marketCap": 0,
+                "peRatio": 0.0, "eps": 0.0, "dividendYield": 0.0, "roe": 0.0,
+                "fiftyTwoWeekHigh": 0.0, "fiftyTwoWeekLow": 0.0, "sector": "Unknown", "industry": "Unknown",
+                "website": "", "currentPrice": 0.0, "news": []
+            },
+            "history": [],
+            "recommendation": None
+        }
 
 # ==================== PORTFOLIO OPTIMIZATION ====================
 

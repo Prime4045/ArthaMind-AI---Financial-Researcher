@@ -107,27 +107,38 @@ body {
 }
 
 /* Global Contrast Enhancements for Light/Dark mode readability */
-div:not(.dark) .text-slate-400,
-div:not(.dark) .text-gray-400 {
-  color: #64748b !important; /* Boost text-slate-400 to slate-500 in light mode */
+
+/* --- LIGHT MODE --- */
+/* Force all slate/gray muted text to be dark and readable */
+:not(.dark) .text-slate-400,
+:not(.dark) .text-gray-400,
+:not(.dark) .text-slate-500,
+:not(.dark) .text-gray-500 {
+  color: #334155 !important; /* slate-700 – dark readable text */
 }
 
-div:not(.dark) .text-slate-500,
-div:not(.dark) .text-gray-500 {
-  color: #475569 !important; /* Boost text-slate-500 to slate-600 in light mode */
+/* Force inputs and selects to have clear dark text */
+:not(.dark) input,
+:not(.dark) select,
+:not(.dark) textarea {
+  color: #0f172a !important; /* slate-900 for input values in light mode */
+}
+
+/* --- DARK MODE --- */
+/* Ensure muted text remains clearly readable against dark backgrounds */
+.dark .text-slate-400,
+.dark .text-gray-400 {
+  color: #94a3b8 !important; /* slate-400 */
 }
 
 .dark .text-slate-500,
-.dark .text-gray-500 {
-  color: #94a3b8 !important; /* Boost text-slate-500 to slate-400 in dark mode */
+.dark .text-gray-500,
+.dark .text-slate-600,
+.dark .text-gray-600 {
+  color: #cbd5e1 !important; /* slate-300 – brighter for dark bg readability */
 }
 
-div:not(.dark) .border-slate-200 {
-  border-color: #cbd5e1 !important; /* slate-300 border for better visibility in light mode */
-}
-
-div:not(.dark) input,
-div:not(.dark) select,
-div:not(.dark) textarea {
-  color: #0f172a !important; /* slate-900 for input values in light mode */
+.dark .text-slate-700,
+.dark .text-gray-700 {
+  color: #e2e8f0 !important; /* slate-200 */
 }

@@ -1119,13 +1119,13 @@ export default function Dashboard() {
 
   // Color configurations based on theme
   const themeClasses = {
-    bg: theme === "light" ? "bg-[#F1F5F9]" : "bg-[#070A13]",
-    card: theme === "light" ? "glass-card border-slate-200/80 text-slate-800 shadow-md rounded-2xl" : "glass-card border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
-    textMuted: theme === "light" ? "text-slate-500" : "text-slate-400",
-    textTitle: theme === "light" ? "text-slate-800" : "text-white",
-    input: theme === "light" ? "bg-white border-slate-200 text-slate-900" : "bg-[#0E1322] border-slate-800 text-slate-100",
-    border: theme === "light" ? "border-slate-200" : "border-slate-800/70",
-    tableRowEven: theme === "light" ? "bg-slate-100/50" : "bg-[#0E1322]/40"
+    bg: theme === "light" ? "bg-slate-50" : "bg-[#070A13]",
+    card: theme === "light" ? "bg-white border-2 border-slate-900 text-slate-900 shadow-lg rounded-2xl" : "glass-card border border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
+    textMuted: theme === "light" ? "text-slate-700 font-medium" : "text-slate-400",
+    textTitle: theme === "light" ? "text-slate-900 font-extrabold" : "text-white",
+    input: theme === "light" ? "bg-white border-2 border-slate-900 text-slate-900 placeholder-slate-500" : "bg-[#0E1322] border border-slate-800 text-slate-100",
+    border: theme === "light" ? "border-2 border-slate-900" : "border border-slate-800/70",
+    tableRowEven: theme === "light" ? "bg-slate-100 border-b border-slate-200" : "bg-[#0E1322]/40"
   };
 
   return (
@@ -1494,7 +1494,7 @@ export default function Dashboard() {
                   
                   {/* Workspace Navigation Tabs */}
                   <div className="flex items-center justify-between border-b pb-4 mb-5 border-slate-200 dark:border-slate-800/80">
-                    <div className="flex space-x-4 md:space-x-6 text-xs md:text-sm font-semibold overflow-x-auto scrollbar-none pb-1 flex-nowrap w-full">
+                    <div className="flex text-xs md:text-sm font-semibold overflow-x-auto md:overflow-x-visible scrollbar-none flex-nowrap md:flex-wrap gap-x-4 md:gap-x-6 gap-y-1 pb-1 w-full">
                       {[
                         { id: "Overview", label: "Overview & Charts" },
                         { id: "Comparator", label: "Stock Comparator" },
@@ -1596,7 +1596,7 @@ export default function Dashboard() {
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
                                       <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} />
-                                      <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                      <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Area type="monotone" dataKey="Close" stroke="#6366F1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorClose)" name="Close Price" />
                                     </AreaChart>
                                   </ResponsiveContainer>
@@ -1608,7 +1608,7 @@ export default function Dashboard() {
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
                                       <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} />
-                                      <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                      <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
                                       <Line type="monotone" dataKey="Close" stroke="#6366F1" strokeWidth={2.5} dot={false} name="Closing Price" />
                                       <Line type="monotone" dataKey="MA_10" stroke="#3B82F6" strokeWidth={1.5} dot={false} name="10 SMA" />
@@ -1623,7 +1623,7 @@ export default function Dashboard() {
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
                                       <YAxis domain={[0, 100]} stroke="#64748B" fontSize={8} />
-                                      <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                      <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
                                       <ReferenceLine y={70} stroke="#EF4444" strokeDasharray="3 3" label={{ value: "Overbought (70)", fill: "#EF4444", fontSize: 7, position: "insideTopLeft" }} />
                                       <ReferenceLine y={30} stroke="#10B981" strokeDasharray="3 3" label={{ value: "Oversold (30)", fill: "#10B981", fontSize: 7, position: "insideBottomLeft" }} />
@@ -1638,7 +1638,7 @@ export default function Dashboard() {
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
                                       <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} />
-                                      <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                      <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
                                       <Bar dataKey="MACD_Diff" name="MACD Histogram">
                                         {stockHistory.map((entry, idx) => (
@@ -2150,7 +2150,7 @@ export default function Dashboard() {
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
                                       <YAxis unit="%" stroke="#64748B" fontSize={8} />
-                                      <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                      <Tooltip formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)}%` : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
                                       <Line type="monotone" dataKey="return_a" stroke="#6366F1" strokeWidth={2} dot={false} name={compareTickerA} />
                                       <Line type="monotone" dataKey="return_b" stroke="#10B981" strokeWidth={2} dot={false} name={compareTickerB} />
@@ -2654,7 +2654,7 @@ export default function Dashboard() {
                             <CartesianGrid stroke={theme === "light" ? "#F1F5F9" : "#1E293B"} />
                             <XAxis type="number" dataKey="volatility" name="Volatility" unit="" label={{ value: "Volatility (Risk)", position: "bottom", fill: "#94A3B8", fontSize: 10 }} stroke="#94A3B8" fontSize={8} />
                             <YAxis type="number" dataKey="return" name="Return" unit="" label={{ value: "Return", angle: -90, position: "insideLeft", fill: "#94A3B8", fontSize: 10 }} stroke="#94A3B8" fontSize={8} />
-                            <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0F172A", border: "1px solid #E2E8F0" }} />
+                            <Tooltip cursor={{ strokeDasharray: "3 3" }} formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)}%` : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0F172A", border: "1px solid #E2E8F0" }} />
                             <Scatter name="Portfolios" data={optResults.frontier_points.map((p: any) => ({ ...p, return: Number(p.return) * 100, volatility: Number(p.volatility) * 100 }))} fill="#10B981" line={false} shape="circle" fillOpacity={0.6} />
                           </ScatterChart>
                         </ResponsiveContainer>
@@ -2713,7 +2713,7 @@ export default function Dashboard() {
             
             {/* Sub-tab navigation */}
             <div className="flex items-center justify-between border-b pb-4 mb-5 border-slate-200 dark:border-slate-800/80">
-              <div className="flex space-x-4 md:space-x-6 text-xs md:text-sm font-semibold overflow-x-auto scrollbar-none pb-1 flex-nowrap w-full">
+              <div className="flex text-xs md:text-sm font-semibold overflow-x-auto md:overflow-x-visible scrollbar-none flex-nowrap md:flex-wrap gap-x-4 md:gap-x-6 gap-y-1 pb-1 w-full">
                 {[
                   { id: "sip", label: "Advanced SIP Planner" },
                   { id: "compare_sip", label: "Compare SIPs" },
@@ -2892,7 +2892,7 @@ export default function Dashboard() {
                                   <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                   <XAxis dataKey="year" name="Year" stroke="#64748B" fontSize={8} tickFormatter={(y) => `Yr ${y}`} />
                                   <YAxis stroke="#64748B" fontSize={8} tickFormatter={(v) => `₹${formatVolume(v)}`} />
-                                  <Tooltip formatter={(value: any) => `₹${Math.round(value).toLocaleString("en-IN")}`} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                  <Tooltip formatter={(value: any) => [typeof value === 'number' ? `₹${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : value]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                   <Legend wrapperStyle={{ fontSize: 9 }} />
                                   <Area type="monotone" dataKey="total_invested" stroke="#6366F1" strokeWidth={2} fillOpacity={1} fill="url(#colorInvested)" name="Total Principal Invested" />
                                   <Area type="monotone" dataKey="future_value" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorMaturity)" name="Final Corpus Value" />
@@ -2904,7 +2904,7 @@ export default function Dashboard() {
 
                         {/* Goal roadmap notification */}
                         {sipMode === "goal" && (
-                          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-xs text-slate-350 flex items-start space-x-2.5">
+                          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-xs text-slate-700 dark:text-slate-200 flex items-start space-x-2.5">
                             <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
                             <div>
                               <p className="font-bold text-slate-800 dark:text-white">Goal Planning Recommendation</p>
@@ -3033,7 +3033,7 @@ export default function Dashboard() {
                                   <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                   <XAxis dataKey="year" stroke="#64748B" fontSize={8} tickFormatter={(y) => `Yr ${y}`} />
                                   <YAxis stroke="#64748B" fontSize={8} tickFormatter={(v) => `₹${formatVolume(v)}`} />
-                                  <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                  <Tooltip formatter={(v: any) => [typeof v === 'number' ? `₹${v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                   <Legend wrapperStyle={{ fontSize: 9 }} />
                                   <Line type="monotone" data={sipCompareResults.sip_a.schedule} dataKey="future_value" stroke="#6366F1" strokeWidth={2} dot={false} name="Portfolio A" />
                                   <Line type="monotone" data={sipCompareResults.sip_b.schedule} dataKey="future_value" stroke="#10B981" strokeWidth={2} dot={false} name="Portfolio B" />
@@ -3287,7 +3287,7 @@ export default function Dashboard() {
                                   <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                   <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
                                   <YAxis unit="%" stroke="#64748B" fontSize={8} />
-                                  <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                  <Tooltip formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)}%` : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                   <Legend wrapperStyle={{ fontSize: 9 }} />
                                   <Line type="monotone" dataKey="Large Cap" stroke="#3B82F6" strokeWidth={1.5} dot={false} />
                                   <Line type="monotone" dataKey="Mid Cap" stroke="#F59E0B" strokeWidth={1.5} dot={false} />
@@ -3301,7 +3301,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* Advisor Risk assessment card */}
-                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-5 text-xs text-slate-350 space-y-3">
+                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-5 text-xs text-slate-700 dark:text-slate-200 space-y-3">
                           <h5 className="font-bold text-slate-800 dark:text-white flex items-center space-x-2">
                             <Cpu className="h-4.5 w-4.5 text-indigo-400" />
                             <span>AI Quant Advisor Consensus</span>
@@ -3309,13 +3309,13 @@ export default function Dashboard() {
                           <p className="leading-relaxed">
                             Based on live Morningstar ratings and Sharpe Ratio computations, the following allocations are recommended:
                           </p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-3xs pt-1.5 leading-relaxed text-slate-450">
-                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-lg">
-                              <span className="font-bold text-slate-850 dark:text-white uppercase block mb-1">Risk-Averse Investors</span>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-3xs pt-1.5 leading-relaxed text-slate-600 dark:text-slate-300">
+                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
+                              <span className="font-bold text-slate-900 dark:text-white uppercase block mb-1">Risk-Averse Investors</span>
                               Mirae Asset Large Cap or ICICI Hybrid are recommended, offering a moderate volatility profile with strong Sharpe indicators (&gt; 1.2x).
                             </div>
-                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-lg">
-                              <span className="font-bold text-slate-850 dark:text-white uppercase block mb-1">Growth Seekers</span>
+                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
+                              <span className="font-bold text-slate-900 dark:text-white uppercase block mb-1">Growth Seekers</span>
                               Nippon India Small Cap or HDFC Mid-Cap have yielded over 25% returns in the last 1 year, suitable for a 5+ year investment horizon.
                             </div>
                           </div>
