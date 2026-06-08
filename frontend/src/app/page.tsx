@@ -11,7 +11,9 @@ import {
   Network, Activity, Landmark, ChevronRight, HelpCircle
 } from "lucide-react";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
+const BACKEND_URL = typeof window !== "undefined"
+  ? (process.env.NEXT_PUBLIC_BACKEND_URL || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" ? "http://127.0.0.1:8000" : ""))
+  : "http://127.0.0.1:8000";
 const DEFAULT_TICKERS = [
   "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
   "SBIN.NS", "ITC.NS", "LT.NS", "BAJFINANCE.NS", "HINDUNILVR.NS"
