@@ -1,9 +1,119 @@
 import os
 import datetime
+import re
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+
+def parse_inline_markdown_to_html(text: str) -> str:
+    if not text:
+        return ""
+    
+    # Escape XML characters that break ReportLab's XML parser
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    
+    # Replace bold (**bold** and __bold__) with <b>bold</b>
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'__(.*?)__', r'<b>\1</b>', text)
+    
+    # Replace italic (*italic* and _italic_) with <i>italic</i>
+    text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)
+    text = re.sub(r'_(.*?)_', r'<i>\1</i>', text)
+    
+    # Replace code (`code`) with font tags
+    text = re.sub(r'`(.*?)`', r'<font face="Courier" color="#4F46E5"><b>\1</b></font>', text)
+    
+    return text
+
+def parse_markdown_to_story(text: str, story: list, styles, body_style: ParagraphStyle, heading_style: ParagraphStyle):
+    if not text:
+        return
+        
+    lines = text.split("\n")
+    
+    # Heading style variants for subheaders
+    h2_style = ParagraphStyle(
+        'H2Custom',
+        parent=heading_style,
+        fontSize=12,
+        leading=15,
+        spaceBefore=10,
+        spaceAfter=4
+    )
+    
+    h3_style = ParagraphStyle(
+        'H3Custom',
+        parent=heading_style,
+        fontSize=10,
+        leading=13,
+        spaceBefore=8,
+        spaceAfter=3,
+        textColor=colors.HexColor('#4F46E5')
+    )
+    
+    bullet_style = ParagraphStyle(
+        'BulletCustom',
+        parent=body_style,
+        leftIndent=15,
+        firstLineIndent=-10,
+        spaceAfter=4
+    )
+
+    for line in lines:
+        clean_line = line.strip()
+        if not clean_line:
+            story.append(Spacer(1, 4))
+            continue
+            
+        # Horizontal rule
+        if clean_line in ["---", "===", "***"]:
+            t = Table([['']], colWidths=[500], rowHeights=[1])
+            t.setStyle(TableStyle([
+                ('LINEABOVE', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+            ]))
+            story.append(t)
+            story.append(Spacer(1, 4))
+            continue
+            
+        # Headers (# Header)
+        if clean_line.startswith("#"):
+            match = re.match(r'^(#{1,6})\s+(.*)$', clean_line)
+            if match:
+                level = len(match.group(1))
+                heading_text = match.group(2)
+                html_text = parse_inline_markdown_to_html(heading_text)
+                
+                if level == 1:
+                    story.append(Paragraph(html_text, heading_style))
+                elif level == 2:
+                    story.append(Paragraph(html_text, h2_style))
+                else:
+                    story.append(Paragraph(html_text, h3_style))
+                continue
+                
+        # Bullet list items (- item)
+        if clean_line.startswith("- ") or clean_line.startswith("* "):
+            list_text = clean_line[2:]
+            html_text = parse_inline_markdown_to_html(list_text)
+            story.append(Paragraph(f"&bull; {html_text}", bullet_style))
+            continue
+            
+        # Numbered list items (1. item)
+        if re.match(r'^\d+\.\s+', clean_line):
+            match = re.match(r'^(\d+)\.\s+(.*)$', clean_line)
+            if match:
+                num = match.group(1)
+                list_text = match.group(2)
+                html_text = parse_inline_markdown_to_html(list_text)
+                story.append(Paragraph(f"{num}. {html_text}", bullet_style))
+                continue
+                
+        # Normal body paragraph
+        html_text = parse_inline_markdown_to_html(clean_line)
+        story.append(Paragraph(html_text, body_style))
 
 def generate_pdf_report(
     ticker: str, 
@@ -112,48 +222,27 @@ def generate_pdf_report(
     
     # Executive Summary / Master report
     story.append(Paragraph("1. Executive Summary & Investment Thesis", heading_style))
-    # Standard clean-up: clean Markdown headers for PDF formatting
-    clean_master = master_text.replace("###", "").replace("##", "").replace("#", "")
-    for paragraph in clean_master.split("\n\n"):
-        if paragraph.strip():
-            story.append(Paragraph(paragraph.strip(), body_style))
-            
+    parse_markdown_to_story(master_text, story, styles, body_style, heading_style)
     story.append(Spacer(1, 10))
     
     # Technical Analyst Report
     story.append(Paragraph("2. Technical Indicators Analysis", heading_style))
-    clean_tech = tech_text.replace("###", "").replace("##", "").replace("#", "")
-    for paragraph in clean_tech.split("\n\n"):
-        if paragraph.strip():
-            story.append(Paragraph(paragraph.strip(), body_style))
-            
+    parse_markdown_to_story(tech_text, story, styles, body_style, heading_style)
     story.append(Spacer(1, 10))
     
     # Fundamental Analyst Report
     story.append(Paragraph("3. Fundamental Valuation & Sector Ratios", heading_style))
-    clean_fund = fund_text.replace("###", "").replace("##", "").replace("#", "")
-    for paragraph in clean_fund.split("\n\n"):
-        if paragraph.strip():
-            story.append(Paragraph(paragraph.strip(), body_style))
-            
+    parse_markdown_to_story(fund_text, story, styles, body_style, heading_style)
     story.append(Spacer(1, 10))
     
     # News & Sentiment
     story.append(Paragraph("4. News & Market Sentiment Sentiment Scoring", heading_style))
-    clean_sent = sent_text.replace("###", "").replace("##", "").replace("#", "")
-    for paragraph in clean_sent.split("\n\n"):
-        if paragraph.strip():
-            story.append(Paragraph(paragraph.strip(), body_style))
-            
+    parse_markdown_to_story(sent_text, story, styles, body_style, heading_style)
     story.append(Spacer(1, 10))
     
     # Personal Finance Tax and SIP Calculator
     story.append(Paragraph("5. SIP & Capital Gains Tax Planning (India Rules)", heading_style))
-    clean_pf = pf_text.replace("###", "").replace("##", "").replace("#", "")
-    for paragraph in clean_pf.split("\n\n"):
-        if paragraph.strip():
-            story.append(Paragraph(paragraph.strip(), body_style))
-            
+    parse_markdown_to_story(pf_text, story, styles, body_style, heading_style)
     story.append(Spacer(1, 15))
     
     # Regulatory Disclaimer

@@ -16,31 +16,31 @@ const DEFAULT_TICKERS = [
   "SBIN.NS", "ITC.NS", "LT.NS", "BAJFINANCE.NS", "HINDUNILVR.NS"
 ];
 
-function parseInlineMarkdown(text: string): React.ReactNode {
-  if (!text) return "";
+function parseInlineMarkdown(text: string): React.ReactNode[] {
+  if (!text) return [];
   
-  // Split on bold markdown (**bold**)
-  const parts = text.split(/(\*\*.*?\*\*)/g);
+  // Split on bold, italic, and inline code markers
+  const regex = /(\*\*.*?\*\*|__.*?__|`.*?`|\*.*?\*|_.*?_)/g;
+  const parts = text.split(regex);
   
   return parts.map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
+    if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) {
       const boldText = part.substring(2, part.length - 2);
       return <strong key={index} className="font-extrabold text-slate-800 dark:text-white">{boldText}</strong>;
     }
-    
-    // Split on code markdown (`code`)
-    const subParts = part.split(/(`.*?`)/g);
-    return subParts.map((subPart, subIndex) => {
-      if (subPart.startsWith("`") && subPart.endsWith("`")) {
-        const codeText = subPart.substring(1, subPart.length - 1);
-        return (
-          <code key={subIndex} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-mono text-[10px]">
-            {codeText}
-          </code>
-        );
-      }
-      return subPart;
-    });
+    if ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))) {
+      const italicText = part.substring(1, part.length - 1);
+      return <em key={index} className="italic text-slate-700 dark:text-slate-200">{italicText}</em>;
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      const codeText = part.substring(1, part.length - 1);
+      return (
+        <code key={index} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-mono text-[10px]">
+          {codeText}
+        </code>
+      );
+    }
+    return part;
   });
 }
 
