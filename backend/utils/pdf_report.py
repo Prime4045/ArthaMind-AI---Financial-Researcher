@@ -30,8 +30,22 @@ def parse_markdown_to_story(text: str, story: list, styles, body_style: Paragrap
     if not text:
         return
         
-    lines = text.split("\n")
-    
+    # Pre-process text to remove blank lines within table blocks
+    raw_lines = text.split("\n")
+    lines = []
+    for i in range(len(raw_lines)):
+        current = raw_lines[i].strip()
+        if current == "":
+            next_non_empty = ""
+            for j in range(i + 1, len(raw_lines)):
+                if raw_lines[j].strip() != "":
+                    next_non_empty = raw_lines[j].strip()
+                    break
+            prev_line = lines[-1].strip() if len(lines) > 0 else ""
+            if prev_line.startswith("|") and next_non_empty.startswith("|"):
+                continue
+        lines.append(raw_lines[i])
+        
     # Heading style variants for subheaders
     h2_style = ParagraphStyle(
         'H2Custom',
@@ -60,10 +74,65 @@ def parse_markdown_to_story(text: str, story: list, styles, body_style: Paragrap
         spaceAfter=4
     )
 
-    for line in lines:
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         clean_line = line.strip()
         if not clean_line:
             story.append(Spacer(1, 4))
+            i += 1
+            continue
+            
+        # Table detection
+        if clean_line.startswith("|"):
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                table_lines.append(lines[i].strip())
+                i += 1
+                
+            if len(table_lines) >= 1:
+                # Parse headers
+                raw_headers = [c.strip() for c in table_lines[0].split("|")]
+                headers = raw_headers[1:-1] if len(raw_headers) > 2 else raw_headers
+                
+                start_data_idx = 1
+                if len(table_lines) > 1 and "---" in table_lines[1]:
+                    start_data_idx = 2
+                    
+                table_data = []
+                # Add headers row
+                header_row = []
+                for h in headers:
+                    html_text = parse_inline_markdown_to_html(h)
+                    header_row.append(Paragraph(f"<b>{html_text}</b>", body_style))
+                table_data.append(header_row)
+                
+                # Add data rows
+                for r in range(start_data_idx, len(table_lines)):
+                    raw_cells = [c.strip() for c in table_lines[r].split("|")]
+                    cells = raw_cells[1:-1] if len(raw_cells) > 2 else raw_cells
+                    if len(cells) > 0:
+                        data_row = []
+                        for cell in cells:
+                            html_text = parse_inline_markdown_to_html(cell)
+                            data_row.append(Paragraph(html_text, body_style))
+                        while len(data_row) < len(headers):
+                            data_row.append(Paragraph("", body_style))
+                        table_data.append(data_row[:len(headers)])
+                
+                if len(headers) > 0:
+                    col_widths = [500.0 / len(headers)] * len(headers)
+                    t = Table(table_data, colWidths=col_widths)
+                    t.setStyle(TableStyle([
+                        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
+                        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+                        ('TOPPADDING', (0,0), (-1,-1), 6),
+                        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+                        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                    ]))
+                    story.append(t)
+                    story.append(Spacer(1, 10))
             continue
             
         # Horizontal rule
@@ -76,6 +145,7 @@ def parse_markdown_to_story(text: str, story: list, styles, body_style: Paragrap
             ]))
             story.append(t)
             story.append(Spacer(1, 4))
+            i += 1
             continue
             
         # Headers (# Header)
@@ -92,6 +162,7 @@ def parse_markdown_to_story(text: str, story: list, styles, body_style: Paragrap
                     story.append(Paragraph(html_text, h2_style))
                 else:
                     story.append(Paragraph(html_text, h3_style))
+                i += 1
                 continue
                 
         # Bullet list items (- item)
@@ -99,6 +170,7 @@ def parse_markdown_to_story(text: str, story: list, styles, body_style: Paragrap
             list_text = clean_line[2:]
             html_text = parse_inline_markdown_to_html(list_text)
             story.append(Paragraph(f"&bull; {html_text}", bullet_style))
+            i += 1
             continue
             
         # Numbered list items (1. item)
@@ -109,11 +181,13 @@ def parse_markdown_to_story(text: str, story: list, styles, body_style: Paragrap
                 list_text = match.group(2)
                 html_text = parse_inline_markdown_to_html(list_text)
                 story.append(Paragraph(f"{num}. {html_text}", bullet_style))
+                i += 1
                 continue
                 
         # Normal body paragraph
         html_text = parse_inline_markdown_to_html(clean_line)
         story.append(Paragraph(html_text, body_style))
+        i += 1
 
 def generate_pdf_report(
     ticker: str, 

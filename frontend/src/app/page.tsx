@@ -47,14 +47,95 @@ function parseInlineMarkdown(text: string): React.ReactNode[] {
 function renderMarkdown(text: string): React.ReactNode {
   if (!text) return null;
   
-  const lines = text.split("\n");
+  // Pre-process text to remove blank lines within table blocks
+  const rawLines = text.split(/\r?\n/);
+  const lines: string[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const current = rawLines[i].trim();
+    if (current === "") {
+      let nextNonEmpty = "";
+      for (let j = i + 1; j < rawLines.length; j++) {
+        if (rawLines[j].trim() !== "") {
+          nextNonEmpty = rawLines[j].trim();
+          break;
+        }
+      }
+      const prevLine = lines.length > 0 ? lines[lines.length - 1].trim() : "";
+      if (prevLine.startsWith("|") && nextNonEmpty.startsWith("|")) {
+        continue;
+      }
+    }
+    lines.push(rawLines[i]);
+  }
   
-  return lines.map((line, idx) => {
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
     const cleanLine = line.trim();
+    
+    // Table detection
+    if (cleanLine.startsWith("|")) {
+      const tableRows: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        tableRows.push(lines[i].trim());
+        i++;
+      }
+      
+      if (tableRows.length >= 1) {
+        const rawHeaders = tableRows[0].split("|");
+        const headers = rawHeaders.map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+        
+        let startDataIdx = 1;
+        if (tableRows.length > 1 && tableRows[1].includes("---")) {
+          startDataIdx = 2;
+        }
+        
+        const dataRows: string[][] = [];
+        for (let r = startDataIdx; r < tableRows.length; r++) {
+          const cells = tableRows[r].split("|").map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+          if (cells.length > 0) {
+            dataRows.push(cells);
+          }
+        }
+        
+        if (headers.length > 0) {
+          elements.push(
+            <div key={`table-${i}`} className="overflow-x-auto my-3 rounded-xl border border-slate-200 dark:border-slate-800/80">
+              <table className="w-full text-2xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+                    {headers.map((h, hIdx) => (
+                      <th key={hIdx} className="p-2 text-left font-bold text-slate-800 dark:text-slate-200 border-r border-slate-200 dark:border-slate-800 last:border-0">
+                        {parseInlineMarkdown(h)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dataRows.map((row, rIdx) => (
+                    <tr key={rIdx} className="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/20">
+                      {row.map((cell, cIdx) => (
+                        <td key={cIdx} className="p-2 text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 last:border-0">
+                          {parseInlineMarkdown(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+      }
+      continue;
+    }
     
     // Horizontal rule
     if (cleanLine === "---" || cleanLine === "===" || cleanLine === "***") {
-      return <hr key={idx} className="my-3 border-slate-200 dark:border-slate-800" />;
+      elements.push(<hr key={i} className="my-3 border-slate-200 dark:border-slate-800" />);
+      i++;
+      continue;
     }
     
     // Headers (### Header)
@@ -67,26 +148,33 @@ function renderMarkdown(text: string): React.ReactNode {
         
         switch (level) {
           case 1:
-            return <h1 key={idx} className="text-sm font-extrabold text-slate-900 dark:text-white mt-3 mb-1.5">{parsed}</h1>;
+            elements.push(<h1 key={i} className="text-sm font-extrabold text-slate-900 dark:text-white mt-3 mb-1.5">{parsed}</h1>);
+            break;
           case 2:
-            return <h2 key={idx} className="text-xs font-bold text-slate-900 dark:text-white mt-2 mb-1">{parsed}</h2>;
+            elements.push(<h2 key={i} className="text-xs font-bold text-slate-900 dark:text-white mt-2 mb-1">{parsed}</h2>);
+            break;
           default:
-            return <h3 key={idx} className="text-3xs font-extrabold text-indigo-600 dark:text-indigo-400 mt-2 mb-0.5 uppercase tracking-wider">{parsed}</h3>;
+            elements.push(<h3 key={i} className="text-3xs font-extrabold text-indigo-600 dark:text-indigo-400 mt-2 mb-0.5 uppercase tracking-wider">{parsed}</h3>);
+            break;
         }
+        i++;
+        continue;
       }
     }
     
     // Bullet list items (- item)
     if (cleanLine.startsWith("- ") || cleanLine.startsWith("* ")) {
       const listText = cleanLine.substring(2);
-      return (
-        <div key={idx} className="flex items-start space-x-1.5 my-0.5 pl-2">
+      elements.push(
+        <div key={i} className="flex items-start space-x-1.5 my-0.5 pl-2">
           <span className="text-indigo-500 font-bold">•</span>
           <span className="text-slate-600 dark:text-slate-300 text-2xs leading-relaxed">
             {parseInlineMarkdown(listText)}
           </span>
         </div>
       );
+      i++;
+      continue;
     }
     
     // Numbered list items (1. item)
@@ -95,29 +183,36 @@ function renderMarkdown(text: string): React.ReactNode {
       if (match) {
         const num = match[1];
         const listText = match[2];
-        return (
-          <div key={idx} className="flex items-start space-x-1.5 my-0.5 pl-2">
+        elements.push(
+          <div key={i} className="flex items-start space-x-1.5 my-0.5 pl-2">
             <span className="text-indigo-500 font-bold">{num}.</span>
             <span className="text-slate-600 dark:text-slate-300 text-2xs leading-relaxed">
               {parseInlineMarkdown(listText)}
             </span>
           </div>
         );
+        i++;
+        continue;
       }
     }
     
     // Empty line
     if (cleanLine === "") {
-      return <div key={idx} className="h-1" />;
+      elements.push(<div key={i} className="h-1" />);
+      i++;
+      continue;
     }
     
     // Regular paragraph
-    return (
-      <p key={idx} className="text-slate-600 dark:text-slate-300 text-2xs my-0.5 leading-relaxed">
+    elements.push(
+      <p key={i} className="text-slate-600 dark:text-slate-300 text-2xs my-0.5 leading-relaxed">
         {parseInlineMarkdown(line)}
       </p>
     );
-  });
+    i++;
+  }
+  
+  return <>{elements}</>;
 }
 
 export default function Dashboard() {
@@ -190,6 +285,7 @@ export default function Dashboard() {
   const [personalFinanceReport, setPersonalFinanceReport] = useState("");
   const [masterReport, setMasterReport] = useState("");
   const [pdfFilename, setPdfFilename] = useState("");
+  const [pdfCompiling, setPdfCompiling] = useState(false);
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
@@ -453,6 +549,7 @@ export default function Dashboard() {
     setPersonalFinanceReport("");
     setMasterReport("");
     setPdfFilename("");
+    setPdfCompiling(false);
 
     const eventSource = new EventSource(`${BACKEND_URL}/api/stock/${selectedTicker}/research/stream`);
 
@@ -485,6 +582,7 @@ export default function Dashboard() {
   };
 
   const compilePDF = async (ticker: string, tech: string, fund: string, sent: string, pf: string, master: string) => {
+    setPdfCompiling(true);
     try {
       const res = await fetch(`${BACKEND_URL}/api/report/generate`, {
         method: "POST",
@@ -504,6 +602,8 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error("PDF generation failed:", err);
+    } finally {
+      setPdfCompiling(false);
     }
   };
 
@@ -1483,16 +1583,51 @@ export default function Dashboard() {
                           <div className="bg-slate-50 dark:bg-[#0E1322]/40 p-4 border border-slate-200 dark:border-slate-800/80 rounded-xl flex flex-col h-[340px] justify-between">
                             <div className="flex items-center justify-between gap-2 border-b pb-2 mb-3 border-slate-200 dark:border-slate-800 w-full min-w-0">
                               <span className="font-bold text-slate-800 dark:text-white text-xs truncate flex-1 min-w-0">AI Research Specialist Memorandum</span>
-                              {pdfFilename && (
-                                <a 
-                                  href={`${BACKEND_URL}/api/report/download/${encodeURIComponent(pdfFilename.replace(/[^a-zA-Z0-9_\.-]/g, ""))}`} 
-                                  download
-                                  className="bg-emerald-500 hover:bg-emerald-400 text-white text-3xs px-2.5 py-1.5 rounded-lg flex items-center space-x-1 font-bold transition-all shadow-sm shrink-0"
-                                >
-                                  <Download className="h-3 w-3" />
-                                  <span>Download PDF</span>
-                                </a>
-                              )}
+                              {(() => {
+                                if (pdfFilename) {
+                                  return (
+                                    <a 
+                                      href={`${BACKEND_URL}/api/report/download/${encodeURIComponent(pdfFilename.replace(/[^a-zA-Z0-9_\.-]/g, ""))}`} 
+                                      download
+                                      className="bg-emerald-500 hover:bg-emerald-400 text-white text-3xs px-2.5 py-1.5 rounded-lg flex items-center space-x-1 font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+                                    >
+                                      <Download className="h-3 w-3" />
+                                      <span>Download PDF</span>
+                                    </a>
+                                  );
+                                }
+                                if (pdfCompiling) {
+                                  return (
+                                    <button 
+                                      disabled
+                                      className="bg-indigo-600/50 text-indigo-200 text-3xs px-2.5 py-1.5 rounded-lg flex items-center space-x-1 font-bold transition-all shadow-sm shrink-0 cursor-not-allowed"
+                                    >
+                                      <RefreshCw className="h-3 w-3 animate-spin" />
+                                      <span>Compiling PDF...</span>
+                                    </button>
+                                  );
+                                }
+                                if (agentStatus !== "" && agentStatus !== "completed") {
+                                  return (
+                                    <button 
+                                      disabled
+                                      className="bg-indigo-600/40 text-indigo-300/80 text-3xs px-2.5 py-1.5 rounded-lg flex items-center space-x-1 font-bold transition-all shadow-sm shrink-0 cursor-not-allowed"
+                                    >
+                                      <RefreshCw className="h-3 w-3 animate-spin" />
+                                      <span>Generating PDF...</span>
+                                    </button>
+                                  );
+                                }
+                                return (
+                                  <button 
+                                    disabled
+                                    className="bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-3xs px-2.5 py-1.5 rounded-lg flex items-center space-x-1 font-bold transition-all shadow-sm shrink-0 cursor-not-allowed"
+                                  >
+                                    <Download className="h-3 w-3 opacity-50" />
+                                    <span>PDF Not Ready</span>
+                                  </button>
+                                );
+                              })()}
                             </div>
                             <div className="flex-1 overflow-y-auto pr-1 text-2xs leading-relaxed text-slate-600 dark:text-slate-400 font-sans">
                               {masterReport ? (
