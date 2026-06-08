@@ -238,7 +238,7 @@ def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get
     ticker = ticker.strip().upper()
     period = period.strip().lower()
     
-    # Try fetching from DB cache first (valid if last updated is less than 12 hours ago)
+    # Try fetching from DB cache first (valid if last updated is less than 12 hours ago, or shorter for intraday)
     cache_record = db.query(StockHistoryCache).filter(
         StockHistoryCache.ticker == ticker,
         StockHistoryCache.period == period
@@ -250,8 +250,9 @@ def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get
         try:
             last_updated_dt = datetime.strptime(cache_record.last_updated, "%Y-%m-%d %H:%M:%S")
             age_seconds = (datetime.now() - last_updated_dt).total_seconds()
-            # 12 hours = 43200 seconds
-            if age_seconds < 43200:
+            # Cache threshold: 5 mins (300s) for 1d, 15 mins (900s) for 5d, 12 hours (43200s) for others
+            cache_expiry = 300 if period == "1d" else (900 if period == "5d" else 43200)
+            if age_seconds < cache_expiry:
                 is_stale = False
         except Exception as e:
             logger.warning(f"Error parsing history cache timestamp for {ticker} ({period}): {str(e)}")
@@ -259,7 +260,7 @@ def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get
             
     if not is_stale and cache_record:
         try:
-            logger.info(f"Loading {ticker} ({period}) stock history from database cache (age: {age_seconds / 3600:.2f} hours).")
+            logger.info(f"Loading {ticker} ({period}) stock history from database cache (age: {age_seconds / 60:.2f} minutes).")
             data = json.loads(cache_record.history_json)
             return data
         except Exception as e:
@@ -278,8 +279,9 @@ def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get
             
         # Format Date column for JSON serializability
         if "Date" in indicators_df.columns:
+            fmt_str = "%Y-%m-%d %H:%M" if period in ["1d", "5d"] else "%Y-%m-%d"
             indicators_df["Date"] = indicators_df["Date"].apply(
-                lambda x: x.strftime("%Y-%m-%d") if isinstance(x, datetime) or hasattr(x, "strftime") else str(x)
+                lambda x: x.strftime(fmt_str) if isinstance(x, datetime) or hasattr(x, "strftime") else str(x)
             )
             
         records = indicators_df.to_dict(orient="records")
@@ -1064,7 +1066,7 @@ def post_generate_report(req: ReportGenerateRequest):
             pf_text=req.pf_text,
             master_text=req.master_text
         )
-        return {"filename": filename}
+        return {"filename": os.path.basename(filename)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
 

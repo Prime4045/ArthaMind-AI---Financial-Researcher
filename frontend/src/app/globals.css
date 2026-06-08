@@ -3,6 +3,11 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  
+  /* Responsive typography tokens - increased for readability on all screens */
+  --text-2xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.8125rem);    /* 12px on mobile -> 13px on desktop */
+  --text-3xs: clamp(0.6875rem, 0.625rem + 0.25vw, 0.75rem);  /* 11px on mobile -> 12px on desktop */
+  --text-4xs: clamp(0.5625rem, 0.5rem + 0.25vw, 0.625rem);   /* 9px on mobile -> 10px on desktop */
 }
 
 @theme inline {
@@ -11,9 +16,9 @@
   --font-sans: var(--font-plus-jakarta-sans);
   --font-mono: var(--font-jetbrains-mono);
   
-  --text-2xs: 0.65rem;
-  --text-3xs: 0.55rem;
-  --text-4xs: 0.45rem;
+  --text-2xs: var(--text-2xs);
+  --text-3xs: var(--text-3xs);
+  --text-4xs: var(--text-4xs);
 }
 
 body {

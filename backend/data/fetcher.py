@@ -42,16 +42,25 @@ def get_robust_session() -> requests.Session:
     session.mount("https://", adapter)
     return session
 
-def fetch_stock_data(ticker: str, period: str = "5y") -> pd.DataFrame:
+def fetch_stock_data(ticker: str, period: str = "5y", interval: str = None) -> pd.DataFrame:
     """
     Downloads historical data for a ticker with custom session headers.
     """
-    logger.info(f"Downloading data for {ticker} (Period: {period})...")
+    # Auto-select interval for short periods if not specified
+    if interval is None:
+        if period == "1d":
+            interval = "5m"
+        elif period == "5d":
+            interval = "15m"
+        else:
+            interval = "1d"
+            
+    logger.info(f"Downloading data for {ticker} (Period: {period}, Interval: {interval})...")
     session = get_robust_session()
     
     try:
         # Download data passing the custom session
-        df = yf.download(ticker, period=period, session=session, progress=False)
+        df = yf.download(ticker, period=period, interval=interval, session=session, progress=False)
         
         if df.empty:
             logger.warning(f"No data returned for ticker {ticker}.")
@@ -62,6 +71,11 @@ def fetch_stock_data(ticker: str, period: str = "5y") -> pd.DataFrame:
             df.columns = df.columns.get_level_values(0)
             
         df = df.reset_index()
+        
+        # Rename Datetime to Date so downstream code can use it uniformly
+        if "Datetime" in df.columns:
+            df = df.rename(columns={"Datetime": "Date"})
+            
         df["Stock"] = ticker
         logger.info(f"Successfully downloaded {len(df)} rows for {ticker}.")
         return df

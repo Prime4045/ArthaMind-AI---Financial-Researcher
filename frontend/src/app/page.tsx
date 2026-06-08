@@ -16,6 +16,110 @@ const DEFAULT_TICKERS = [
   "SBIN.NS", "ITC.NS", "LT.NS", "BAJFINANCE.NS", "HINDUNILVR.NS"
 ];
 
+function parseInlineMarkdown(text: string): React.ReactNode {
+  if (!text) return "";
+  
+  // Split on bold markdown (**bold**)
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      const boldText = part.substring(2, part.length - 2);
+      return <strong key={index} className="font-extrabold text-slate-800 dark:text-white">{boldText}</strong>;
+    }
+    
+    // Split on code markdown (`code`)
+    const subParts = part.split(/(`.*?`)/g);
+    return subParts.map((subPart, subIndex) => {
+      if (subPart.startsWith("`") && subPart.endsWith("`")) {
+        const codeText = subPart.substring(1, subPart.length - 1);
+        return (
+          <code key={subIndex} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-mono text-[10px]">
+            {codeText}
+          </code>
+        );
+      }
+      return subPart;
+    });
+  });
+}
+
+function renderMarkdown(text: string): React.ReactNode {
+  if (!text) return null;
+  
+  const lines = text.split("\n");
+  
+  return lines.map((line, idx) => {
+    const cleanLine = line.trim();
+    
+    // Horizontal rule
+    if (cleanLine === "---" || cleanLine === "===" || cleanLine === "***") {
+      return <hr key={idx} className="my-3 border-slate-200 dark:border-slate-800" />;
+    }
+    
+    // Headers (### Header)
+    if (cleanLine.startsWith("#")) {
+      const match = cleanLine.match(/^(#{1,6})\s+(.*)$/);
+      if (match) {
+        const level = match[1].length;
+        const headingText = match[2];
+        const parsed = parseInlineMarkdown(headingText);
+        
+        switch (level) {
+          case 1:
+            return <h1 key={idx} className="text-sm font-extrabold text-slate-900 dark:text-white mt-3 mb-1.5">{parsed}</h1>;
+          case 2:
+            return <h2 key={idx} className="text-xs font-bold text-slate-900 dark:text-white mt-2 mb-1">{parsed}</h2>;
+          default:
+            return <h3 key={idx} className="text-3xs font-extrabold text-indigo-600 dark:text-indigo-400 mt-2 mb-0.5 uppercase tracking-wider">{parsed}</h3>;
+        }
+      }
+    }
+    
+    // Bullet list items (- item)
+    if (cleanLine.startsWith("- ") || cleanLine.startsWith("* ")) {
+      const listText = cleanLine.substring(2);
+      return (
+        <div key={idx} className="flex items-start space-x-1.5 my-0.5 pl-2">
+          <span className="text-indigo-500 font-bold">•</span>
+          <span className="text-slate-600 dark:text-slate-300 text-2xs leading-relaxed">
+            {parseInlineMarkdown(listText)}
+          </span>
+        </div>
+      );
+    }
+    
+    // Numbered list items (1. item)
+    if (/^\d+\.\s+/.test(cleanLine)) {
+      const match = cleanLine.match(/^(\d+)\.\s+(.*)$/);
+      if (match) {
+        const num = match[1];
+        const listText = match[2];
+        return (
+          <div key={idx} className="flex items-start space-x-1.5 my-0.5 pl-2">
+            <span className="text-indigo-500 font-bold">{num}.</span>
+            <span className="text-slate-600 dark:text-slate-300 text-2xs leading-relaxed">
+              {parseInlineMarkdown(listText)}
+            </span>
+          </div>
+        );
+      }
+    }
+    
+    // Empty line
+    if (cleanLine === "") {
+      return <div key={idx} className="h-1" />;
+    }
+    
+    // Regular paragraph
+    return (
+      <p key={idx} className="text-slate-600 dark:text-slate-300 text-2xs my-0.5 leading-relaxed">
+        {parseInlineMarkdown(line)}
+      </p>
+    );
+  });
+}
+
 export default function Dashboard() {
   const BACKEND_URL = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
     ? (process.env.NEXT_PUBLIC_BACKEND_URL || "")
@@ -732,15 +836,15 @@ export default function Dashboard() {
   };
 
   return (
-    <div className={`flex-1 flex flex-col font-sans overflow-x-hidden min-h-screen transition-colors duration-300 ${theme === "dark" ? "dark" : ""} ${themeClasses.bg}`}>
+    <div className={`flex-1 flex flex-col font-sans overflow-x-hidden min-h-screen pb-24 md:pb-0 transition-colors duration-300 ${theme === "dark" ? "dark" : ""} ${themeClasses.bg}`}>
       
       {/* Header NavBar */}
-      <header className="bg-[#0B0F19]/90 backdrop-blur-md text-white px-6 py-4 flex items-center justify-between border-b border-slate-800/60 sticky top-0 z-50">
+      <header className="bg-[#0B0F19]/90 backdrop-blur-md text-white px-4 py-3 md:px-6 md:py-4 flex items-center justify-between border-b border-slate-800/60 sticky top-0 z-50">
         <div className="flex items-center space-x-2">
           <div className="bg-gradient-to-tr from-indigo-600 to-cyan-500 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
             <Activity className="h-5 w-5 text-white" />
           </div>
-          <span className="text-xl font-bold tracking-tight text-white flex items-center">
+          <span className="text-lg md:text-xl font-bold tracking-tight text-white flex items-center">
             Artha<span className="text-indigo-400 font-extrabold">Mind AI</span>
           </span>
         </div>
@@ -852,8 +956,8 @@ export default function Dashboard() {
       )}
 
       {/* Sub-search section */}
-      <section className="max-w-7xl w-full mx-auto px-6 pt-6 relative z-45">
-        <form onSubmit={handleSearchSubmit} className={`p-4 rounded-xl border flex items-center gap-3 ${themeClasses.card}`}>
+      <section className="max-w-7xl w-full mx-auto px-4 md:px-6 pt-4 md:pt-6 relative z-45">
+        <form onSubmit={handleSearchSubmit} className={`p-3 md:p-4 rounded-xl border flex flex-col sm:flex-row items-stretch sm:items-center gap-3 ${themeClasses.card}`}>
           <div ref={searchContainerRef} className="flex-1 relative">
             <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
             <input 
@@ -895,7 +999,7 @@ export default function Dashboard() {
           </div>
           <button 
             type="submit" 
-            className="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm px-8 py-3 rounded-lg transition-colors shadow-md shadow-emerald-500/20"
+            className="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm px-6 py-2.5 md:px-8 md:py-3 rounded-lg transition-colors shadow-md shadow-emerald-500/20 w-full sm:w-auto"
           >
             Search
           </button>
@@ -904,10 +1008,10 @@ export default function Dashboard() {
 
       {/* Watchlist Quick Access Pills */}
       {tickers.length > 0 && (
-        <section className="max-w-7xl w-full mx-auto px-6 pt-2">
+        <section className="max-w-7xl w-full mx-auto px-4 md:px-6 pt-2">
           <div className="flex items-center space-x-2 overflow-x-auto py-2 bg-slate-50 dark:bg-slate-950/20 px-4 rounded-xl border border-slate-200 dark:border-slate-800/80 scrollbar-none">
             <span className="text-2xs font-extrabold text-slate-400 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap mr-1">Watchlist:</span>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 flex-nowrap">
               {tickers.map(ticker => (
                 <div 
                   key={ticker} 
@@ -943,7 +1047,7 @@ export default function Dashboard() {
       )}
 
       {/* Main Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col space-y-6 relative z-10">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col space-y-4 md:space-y-6 relative z-10">
         
         {/* ==================== TAB 1: STOCK RESEARCH HUB ==================== */}
         {activeTab === "research" && (
@@ -960,12 +1064,12 @@ export default function Dashboard() {
                 <div className="absolute -left-20 -bottom-20 w-60 h-60 bg-cyan-500/15 blur-3xl rounded-full"></div>
 
                 <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-extrabold tracking-tight flex items-center gap-2">
+                  <div className="w-full">
+                    <h3 className="text-base md:text-lg font-extrabold tracking-tight flex flex-col sm:flex-row sm:items-center gap-2">
                       <span>👋 Welcome to ArthaMind AI</span>
-                      <span className="text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full font-bold">AUTOMATED FINANCIAL RESEARCHER</span>
+                      <span className="text-[10px] md:text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2.5 py-0.5 rounded-full font-bold self-start sm:self-auto uppercase tracking-wider">AUTOMATED FINANCIAL RESEARCHER</span>
                     </h3>
-                    <p className={`text-xs mt-1.5 max-w-3xl leading-relaxed ${theme === "light" ? "text-slate-600" : "text-slate-400"}`}>
+                    <p className={`text-xs mt-2 max-w-3xl leading-relaxed ${theme === "light" ? "text-slate-600" : "text-slate-400"}`}>
                       ArthaMind AI runs a sophisticated multi-agent pipeline to perform automated financial research on any global stock, index, ETF, or cryptocurrency. Our AI agents fetch data, compute technical indicators, analyze fundamentals, score headlines sentiment, and compile cohesive PDF advisor reports.
                     </p>
                   </div>
@@ -1012,79 +1116,79 @@ export default function Dashboard() {
             )}
 
              {/* Stock Header Information Card */}
-            <div className={`p-6 rounded-2xl border flex flex-col gap-6 ${themeClasses.card}`}>
-              {/* Top Row: Name, Price, and Watchlist Button */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/40 dark:border-slate-800/60">
-                <div className="flex items-center space-x-4">
-                  <div className="bg-indigo-50 dark:bg-[#1C2541]/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center">
-                    <span className="text-xl font-black text-indigo-700 dark:text-indigo-400">{selectedTicker.split(".")[0]}</span>
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                      <span>{currentStock.name}</span>
-                      <span className="text-xs bg-slate-100 border text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">{selectedTicker}</span>
-                      {loadingInfo && <RefreshCw className="h-3 w-3 animate-spin text-slate-400" />}
-                    </h2>
-                    <div className="flex items-center gap-3 mt-1.5">
-                      <span className="text-2xl font-black text-slate-900 dark:text-white">{currencySymbol}{currentStock.currentPrice.toFixed(2)}</span>
-                      <span className={`text-xs font-bold px-2 py-1 rounded flex items-center border ${
-                        currentStock.currentPrice - currentStock.close >= 0 
-                          ? "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" 
-                          : "text-rose-500 bg-rose-500/10 border-rose-500/20"
-                      }`}>
-                        {currentStock.currentPrice - currentStock.close >= 0 ? "▲ +" : "▼ "}{(((currentStock.currentPrice - currentStock.close) / (currentStock.close || 1)) * 100).toFixed(2)}%
-                      </span>
-                      <span className="text-4xs text-slate-400 uppercase font-semibold">Live Simulation</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Add to watchlist button with active states */}
-                {tickers.includes(selectedTicker) ? (
-                  <button 
-                    disabled
-                    className="bg-slate-100 dark:bg-[#121B2F]/60 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 font-bold text-xs px-4 py-2.5 rounded-xl self-start md:self-center cursor-not-allowed"
-                  >
-                    ✓ In Watchlist
-                  </button>
-                ) : (
-                  <button 
-                    onClick={() => addTickerToWatchlist(selectedTicker)}
-                    className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all self-start md:self-center cursor-pointer"
-                  >
-                    + Add to Watchlist
-                  </button>
-                )}
-              </div>
-
-              {/* Bottom Row: Key Metrics Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 text-xs">
-                <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                  <div className="text-slate-400 font-bold uppercase text-3xs">Today's High</div>
-                  <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.high.toFixed(2)}</div>
-                </div>
-                <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                  <div className="text-slate-400 font-bold uppercase text-3xs">Today's Low</div>
-                  <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.low.toFixed(2)}</div>
-                </div>
-                <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                  <div className="text-slate-400 font-bold uppercase text-3xs">Open Price</div>
-                  <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.open.toFixed(2)}</div>
-                </div>
-                <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                  <div className="text-slate-400 font-bold uppercase text-3xs">Prev. Close</div>
-                  <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.close.toFixed(2)}</div>
-                </div>
-                <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                  <div className="text-slate-400 font-bold uppercase text-3xs">Volume</div>
-                  <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currentStock.volume}</div>
-                </div>
-                <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                  <div className="text-slate-400 font-bold uppercase text-3xs">Market Cap</div>
-                  <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currentStock.cap}</div>
-                </div>
-              </div>
-            </div>
+             <div className={`p-4 md:p-6 rounded-2xl border flex flex-col gap-4 md:gap-6 ${themeClasses.card}`}>
+               {/* Top Row: Name, Price, and Watchlist Button */}
+               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 pb-3 md:pb-4 border-b border-slate-200/40 dark:border-slate-800/60">
+                 <div className="flex items-center space-x-3 md:space-x-4 max-w-full min-w-0">
+                   <div className="bg-indigo-50 dark:bg-[#1C2541]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center shrink-0">
+                     <span className="text-sm md:text-base font-black text-indigo-700 dark:text-indigo-400">{selectedTicker.split(".")[0]}</span>
+                   </div>
+                   <div className="min-w-0">
+                     <h2 className="text-base md:text-lg font-bold flex flex-wrap items-center gap-1.5 md:gap-2 min-w-0">
+                       <span className="whitespace-normal break-words max-w-[200px] sm:max-w-xs md:max-w-md">{currentStock.name}</span>
+                       <span className="text-[10px] md:text-xs bg-slate-100 border text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold uppercase dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">{selectedTicker}</span>
+                       {loadingInfo && <RefreshCw className="h-3 w-3 animate-spin text-slate-400 shrink-0" />}
+                     </h2>
+                     <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-1 md:mt-1.5">
+                       <span className="text-lg md:text-xl font-black text-slate-900 dark:text-white">{currencySymbol}{currentStock.currentPrice.toFixed(2)}</span>
+                       <span className={`text-[10px] md:text-xs font-bold px-1.5 py-0.5 rounded flex items-center border ${
+                         currentStock.currentPrice - currentStock.close >= 0 
+                           ? "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" 
+                           : "text-rose-500 bg-rose-500/10 border-rose-500/20"
+                       }`}>
+                         {currentStock.currentPrice - currentStock.close >= 0 ? "▲ +" : "▼ "}{(((currentStock.currentPrice - currentStock.close) / (currentStock.close || 1)) * 100).toFixed(2)}%
+                       </span>
+                       <span className="text-4xs text-slate-400 uppercase font-semibold">Live Simulation</span>
+                     </div>
+                   </div>
+                 </div>
+ 
+                 {/* Add to watchlist button with active states */}
+                 {tickers.includes(selectedTicker) ? (
+                   <button 
+                     disabled
+                     className="bg-slate-100 dark:bg-[#121B2F]/60 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 font-bold text-xs px-4 py-2.5 rounded-xl w-full md:w-auto text-center justify-center flex items-center self-stretch md:self-center cursor-not-allowed"
+                   >
+                     ✓ In Watchlist
+                   </button>
+                 ) : (
+                   <button 
+                     onClick={() => addTickerToWatchlist(selectedTicker)}
+                     className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all w-full md:w-auto text-center justify-center flex items-center self-stretch md:self-center cursor-pointer"
+                   >
+                     + Add to Watchlist
+                   </button>
+                 )}
+               </div>
+ 
+               {/* Bottom Row: Key Metrics Grid */}
+               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4 text-xs">
+                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
+                   <div className="text-slate-400 font-bold uppercase text-3xs">Today's High</div>
+                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.high.toFixed(2)}</div>
+                 </div>
+                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
+                   <div className="text-slate-400 font-bold uppercase text-3xs">Today's Low</div>
+                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.low.toFixed(2)}</div>
+                 </div>
+                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
+                   <div className="text-slate-400 font-bold uppercase text-3xs">Open Price</div>
+                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.open.toFixed(2)}</div>
+                 </div>
+                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
+                   <div className="text-slate-400 font-bold uppercase text-3xs">Prev. Close</div>
+                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.close.toFixed(2)}</div>
+                 </div>
+                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
+                   <div className="text-slate-400 font-bold uppercase text-3xs">Volume</div>
+                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currentStock.volume}</div>
+                 </div>
+                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
+                   <div className="text-slate-400 font-bold uppercase text-3xs">Market Cap</div>
+                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currentStock.cap}</div>
+                 </div>
+               </div>
+             </div>
             
             {/* Split layout: Chart & Details vs AI predictions */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1093,11 +1197,11 @@ export default function Dashboard() {
               <div className="lg:col-span-2 flex flex-col space-y-6">
                 
                 {/*                {/* Refined Unified Workspace Card */}
-                <div className={`p-6 ${themeClasses.card}`}>
+                <div className={`p-4 md:p-6 ${themeClasses.card}`}>
                   
                   {/* Workspace Navigation Tabs */}
                   <div className="flex items-center justify-between border-b pb-4 mb-5 border-slate-200 dark:border-slate-800/80">
-                    <div className="flex space-x-6 text-sm font-semibold overflow-x-auto scrollbar-none pb-1">
+                    <div className="flex space-x-4 md:space-x-6 text-xs md:text-sm font-semibold overflow-x-auto scrollbar-none pb-1 flex-nowrap w-full">
                       {[
                         { id: "Overview", label: "Overview & Charts" },
                         { id: "AI Research Hub", label: "AI Research Hub" },
@@ -1130,10 +1234,10 @@ export default function Dashboard() {
                       <div className="space-y-6">
                         
                         {/* Chart Control Bar */}
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800/70">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900/40 p-2.5 md:p-3 rounded-xl border border-slate-200 dark:border-slate-800/70">
                           
                           {/* Indicator Views */}
-                          <div className="flex space-x-1 p-1 bg-slate-100 dark:bg-[#0E1322] border border-slate-200 dark:border-slate-800/80 rounded-lg">
+                          <div className="flex space-x-1 p-1 bg-slate-100 dark:bg-[#0E1322] border border-slate-200 dark:border-slate-800/80 rounded-lg overflow-x-auto scrollbar-none flex-nowrap max-w-full w-full md:w-auto">
                             {[
                               { id: "price", label: "Price (Area)" },
                               { id: "ma", label: "MA Trend" },
@@ -1143,7 +1247,7 @@ export default function Dashboard() {
                               <button
                                 key={view.id}
                                 onClick={() => setChartSubView(view.id as any)}
-                                className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all cursor-pointer ${
+                                className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                                   chartSubView === view.id
                                     ? "bg-indigo-600 text-white shadow-sm"
                                     : "text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
@@ -1155,12 +1259,12 @@ export default function Dashboard() {
                           </div>
 
                           {/* Timeframe Selectors */}
-                          <div className="flex space-x-1">
+                          <div className="flex space-x-1 overflow-x-auto scrollbar-none flex-nowrap max-w-full w-full md:w-auto pb-1 md:pb-0">
                             {["1D", "5D", "1M", "6M", "YTD", "1Y", "5Y", "Max"].map(period => (
                               <button
                                 key={period}
                                 onClick={() => setTimePeriod(period)}
-                                className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all border ${
+                                className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all border whitespace-nowrap ${
                                   timePeriod === period 
                                     ? "bg-slate-100 dark:bg-slate-800 text-indigo-500 border-slate-200 dark:border-slate-700 shadow-2xs" 
                                     : "text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-300"
@@ -1173,7 +1277,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* Interactive Recharts Canvas */}
-                        <div className="h-[320px] w-full relative">
+                        <div className="h-[260px] md:h-[320px] w-full relative">
                           {loadingHistory ? (
                             <div className="h-full flex items-center justify-center text-slate-400 text-xs font-semibold">
                               <RefreshCw className="h-5 w-5 animate-spin mr-2 text-indigo-500" />
@@ -1301,7 +1405,7 @@ export default function Dashboard() {
                       <div className="space-y-6">
                         
                         {/* Controls & Graph Header */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <h4 className="font-bold text-xs text-indigo-500 uppercase tracking-wide flex items-center gap-1.5">
                             <Network className="h-4 w-4 animate-pulse text-indigo-400" />
                             Multi-Agent Execution Pipeline
@@ -1309,7 +1413,7 @@ export default function Dashboard() {
                           <button 
                             onClick={startResearchWorkflow}
                             disabled={agentStatus !== "" && agentStatus !== "completed"}
-                            className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800/50 disabled:text-slate-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/10 flex items-center space-x-1.5 cursor-pointer disabled:cursor-not-allowed"
+                            className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800/50 disabled:text-slate-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-600/10 flex items-center justify-center space-x-1.5 cursor-pointer disabled:cursor-not-allowed w-full sm:w-auto"
                           >
                             <RefreshCw className={`h-3.5 w-3.5 ${agentStatus !== "" && agentStatus !== "completed" ? "animate-spin" : ""}`} />
                             <span>Run AI Agent Team</span>
@@ -1330,7 +1434,7 @@ export default function Dashboard() {
                             return (
                               <div 
                                 key={node.id} 
-                                className={`p-3 rounded-xl border flex flex-col justify-between transition-all duration-300 relative ${
+                                className={`p-2.5 md:p-3 rounded-xl border flex flex-col justify-between transition-all duration-300 relative ${
                                   nodeState === "completed" 
                                     ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-500 dark:text-emerald-400" 
                                     : nodeState === "active"
@@ -1338,11 +1442,11 @@ export default function Dashboard() {
                                     : "bg-white dark:bg-[#0E1322]/30 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500"
                                 }`}
                               >
-                                <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center justify-between mb-1 gap-1">
                                   <span className="text-3xs font-extrabold uppercase tracking-wide truncate">{node.label}</span>
-                                  {nodeState === "completed" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
-                                  {nodeState === "active" && <RefreshCw className="h-3.5 w-3.5 text-indigo-500 animate-spin" />}
-                                  {nodeState === "pending" && <HelpCircle className="h-3.5 w-3.5 opacity-30 text-slate-400" />}
+                                  {nodeState === "completed" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
+                                  {nodeState === "active" && <RefreshCw className="h-3.5 w-3.5 text-indigo-500 animate-spin shrink-0" />}
+                                  {nodeState === "pending" && <HelpCircle className="h-3.5 w-3.5 opacity-30 text-slate-400 shrink-0" />}
                                 </div>
                                 <p className="text-4xs leading-normal opacity-75 line-clamp-2">{node.desc}</p>
                                 <span className="absolute bottom-1 right-2 text-4xs font-black opacity-10">0{idx + 1}</span>
@@ -1377,13 +1481,13 @@ export default function Dashboard() {
                           
                           {/* Left Panel: Master Report */}
                           <div className="bg-slate-50 dark:bg-[#0E1322]/40 p-4 border border-slate-200 dark:border-slate-800/80 rounded-xl flex flex-col h-[340px] justify-between">
-                            <div className="flex items-center justify-between border-b pb-2 mb-3 border-slate-200 dark:border-slate-800">
-                              <span className="font-bold text-slate-800 dark:text-white text-xs">AI Research Specialist Memorandum</span>
+                            <div className="flex items-center justify-between gap-2 border-b pb-2 mb-3 border-slate-200 dark:border-slate-800 w-full min-w-0">
+                              <span className="font-bold text-slate-800 dark:text-white text-xs truncate flex-1 min-w-0">AI Research Specialist Memorandum</span>
                               {pdfFilename && (
                                 <a 
                                   href={`${BACKEND_URL}/api/report/download/${encodeURIComponent(pdfFilename.replace(/[^a-zA-Z0-9_\.-]/g, ""))}`} 
                                   download
-                                  className="bg-emerald-500 hover:bg-emerald-400 text-white text-3xs px-2.5 py-1.5 rounded-lg flex items-center space-x-1 font-bold transition-all shadow-sm"
+                                  className="bg-emerald-500 hover:bg-emerald-400 text-white text-3xs px-2.5 py-1.5 rounded-lg flex items-center space-x-1 font-bold transition-all shadow-sm shrink-0"
                                 >
                                   <Download className="h-3 w-3" />
                                   <span>Download PDF</span>
@@ -1392,7 +1496,7 @@ export default function Dashboard() {
                             </div>
                             <div className="flex-1 overflow-y-auto pr-1 text-2xs leading-relaxed text-slate-600 dark:text-slate-400 font-sans">
                               {masterReport ? (
-                                <div className="whitespace-pre-line">{masterReport}</div>
+                                <div className="space-y-1">{renderMarkdown(masterReport)}</div>
                               ) : (
                                 <div className="flex flex-col items-center justify-center h-full text-slate-400 text-center space-y-1">
                                   <Award className="h-6 w-6 text-slate-500 animate-pulse" />
@@ -1406,7 +1510,7 @@ export default function Dashboard() {
                           <div className="bg-slate-50 dark:bg-[#0E1322]/40 p-4 border border-slate-200 dark:border-slate-800/80 rounded-xl flex flex-col h-[340px]">
                             
                             {/* Report Sub-navigation */}
-                            <div className="flex space-x-1 p-1 bg-slate-100 dark:bg-[#080B13] border border-slate-200 dark:border-slate-800 rounded-lg mb-3">
+                            <div className="flex space-x-1 p-1 bg-slate-100 dark:bg-[#080B13] border border-slate-200 dark:border-slate-800 rounded-lg mb-3 overflow-x-auto scrollbar-none flex-nowrap">
                               {[
                                 { id: "tech", label: "Technical" },
                                 { id: "fund", label: "Fundamental" },
@@ -1416,7 +1520,7 @@ export default function Dashboard() {
                                 <button
                                   key={r.id}
                                   onClick={() => setSelectedAnalystReport(r.id as any)}
-                                  className={`flex-1 py-1 text-4xs font-extrabold rounded transition-all cursor-pointer ${
+                                  className={`flex-1 py-1 text-4xs font-extrabold rounded transition-all cursor-pointer whitespace-nowrap px-2.5 ${
                                     selectedAnalystReport === r.id
                                       ? "bg-indigo-600 text-white shadow-sm"
                                       : "text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
@@ -1430,23 +1534,23 @@ export default function Dashboard() {
                             {/* Active report details */}
                             <div className="flex-1 overflow-y-auto pr-1 text-2xs leading-relaxed text-slate-500 dark:text-slate-400">
                               {selectedAnalystReport === "tech" && (
-                                <div className="whitespace-pre-line">
-                                  {technicalReport || <div className="text-center py-24 text-slate-500">Technical Analyst Node results will compile here.</div>}
+                                <div className="space-y-1">
+                                  {technicalReport ? renderMarkdown(technicalReport) : <div className="text-center py-24 text-slate-500">Technical Analyst Node results will compile here.</div>}
                                 </div>
                               )}
                               {selectedAnalystReport === "fund" && (
-                                <div className="whitespace-pre-line">
-                                  {fundamentalReport || <div className="text-center py-24 text-slate-500">Fundamental Analyst Node results will compile here.</div>}
+                                <div className="space-y-1">
+                                  {fundamentalReport ? renderMarkdown(fundamentalReport) : <div className="text-center py-24 text-slate-500">Fundamental Analyst Node results will compile here.</div>}
                                 </div>
                               )}
                               {selectedAnalystReport === "sent" && (
-                                <div className="whitespace-pre-line">
-                                  {sentimentReport || <div className="text-center py-24 text-slate-500">News Sentiment Analyst Node results will compile here.</div>}
+                                <div className="space-y-1">
+                                  {sentimentReport ? renderMarkdown(sentimentReport) : <div className="text-center py-24 text-slate-500">News Sentiment Analyst Node results will compile here.</div>}
                                 </div>
                               )}
                               {selectedAnalystReport === "pf" && (
-                                <div className="whitespace-pre-line">
-                                  {personalFinanceReport || <div className="text-center py-24 text-slate-500">Personal Finance Advisor Node results will compile here.</div>}
+                                <div className="space-y-1">
+                                  {personalFinanceReport ? renderMarkdown(personalFinanceReport) : <div className="text-center py-24 text-slate-500">Personal Finance Advisor Node results will compile here.</div>}
                                 </div>
                               )}
                             </div>
@@ -1959,12 +2063,12 @@ export default function Dashboard() {
                 <h4 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800">Saved Portfolios Database</h4>
                 <div className="mt-4 space-y-2.5 max-h-[250px] overflow-y-auto">
                   {savedPortfolios.map((portfolio, idx) => (
-                    <div key={idx} className="bg-slate-50 dark:bg-[#0E1322]/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs">
-                      <div>
-                        <div className="font-bold text-slate-800 dark:text-white text-sm">{portfolio.name}</div>
-                        <div className="text-2xs text-slate-400">Assets: {portfolio.tickers.join(", ")}</div>
+                    <div key={idx} className="bg-slate-50 dark:bg-[#0E1322]/40 p-3 md:p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs w-full min-w-0">
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-800 dark:text-white text-sm truncate">{portfolio.name}</div>
+                        <div className="text-2xs text-slate-400 truncate">Assets: {portfolio.tickers.join(", ")}</div>
                       </div>
-                      <div className="flex space-x-4 text-center">
+                      <div className="flex space-x-4 text-center self-end sm:self-auto shrink-0">
                         <div>
                           <div className="text-3xs text-slate-400 font-bold uppercase">Return</div>
                           <div className="text-xs font-semibold text-emerald-500">{(portfolio.expected_return * 100).toFixed(2)}%</div>
@@ -2198,13 +2302,13 @@ export default function Dashboard() {
                 
                 <div className="mt-4 space-y-2.5 max-h-[350px] overflow-y-auto">
                   {expensesList.map((item) => (
-                    <div key={item.id} className="bg-slate-50 dark:bg-[#0E1322]/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs">
-                      <div>
-                        <div className="font-bold text-slate-800 dark:text-white">{item.category}</div>
-                        <div className="text-2xs text-slate-400">{item.description || "No description"}</div>
+                    <div key={item.id} className="bg-slate-50 dark:bg-[#0E1322]/40 p-3 md:p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex justify-between items-center gap-3 text-xs w-full min-w-0">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-slate-800 dark:text-white truncate">{item.category}</div>
+                        <div className="text-2xs text-slate-400 truncate">{item.description || "No description"}</div>
                         <div className="text-3xs text-slate-500">{item.date}</div>
                       </div>
-                      <div className="flex items-center space-x-6">
+                      <div className="flex items-center space-x-3 md:space-x-6 shrink-0">
                         <span className={`font-bold text-sm ${item.type === "Income" ? "text-emerald-500" : "text-rose-500"}`}>
                           {item.type === "Income" ? "+" : "-"} ₹{item.amount.toLocaleString("en-IN")}
                         </span>
@@ -2236,6 +2340,35 @@ export default function Dashboard() {
           <b>SEBI Warning Disclaimer:</b> The stock forecasts, price predictions, and options weights provided herein are generated by automated AI research agents. This platform is built for student curriculum demonstration. We are not registered with SEBI (Securities and Exchange Board of India). Allocate capital at your own discretion.
         </p>
       </footer>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0B0F19]/95 backdrop-blur-lg border-t border-slate-800/80 px-4 py-2.5 flex justify-around items-center shadow-lg">
+        {[
+          { id: "research", label: "Analyst", icon: Activity },
+          { id: "optimizer", label: "Optimizer", icon: PieIcon },
+          { id: "finance", label: "Planner", icon: Landmark }
+        ].map(module => {
+          const isActive = activeTab === module.id;
+          const Icon = module.icon;
+          return (
+            <button 
+              key={module.id}
+              onClick={() => {
+                setActiveTab(module.id as "research" | "optimizer" | "finance");
+                if (module.id === "research") setActiveWorkspaceTab("Overview");
+              }}
+              className={`flex flex-col items-center space-y-1 py-1 px-3 rounded-xl transition-all ${
+                isActive 
+                  ? "text-indigo-400 font-bold bg-indigo-500/10" 
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-[10px] font-semibold">{module.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
     </div>
   );
