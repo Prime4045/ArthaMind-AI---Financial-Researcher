@@ -11,15 +11,16 @@ import {
   Network, Activity, Landmark, ChevronRight, HelpCircle
 } from "lucide-react";
 
-const BACKEND_URL = typeof window !== "undefined"
-  ? (process.env.NEXT_PUBLIC_BACKEND_URL || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" ? "http://127.0.0.1:8000" : ""))
-  : "http://127.0.0.1:8000";
 const DEFAULT_TICKERS = [
   "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
   "SBIN.NS", "ITC.NS", "LT.NS", "BAJFINANCE.NS", "HINDUNILVR.NS"
 ];
 
 export default function Dashboard() {
+  const BACKEND_URL = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
+    ? (process.env.NEXT_PUBLIC_BACKEND_URL || "")
+    : "http://127.0.0.1:8000";
+
   // Theme state: 'light' or 'dark'. Default is 'dark' for premium fintech experience.
   const [theme, setTheme] = useState<"light" | "dark">("dark");
 
