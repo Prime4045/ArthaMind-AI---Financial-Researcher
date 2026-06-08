@@ -137,6 +137,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------------------------------------------------------------------
+# NaN-safe JSON serialisation
+# Python's built-in json module raises ValueError on float('nan') / float('inf')
+# which causes FastAPI to return a 500 for any stock with missing yfinance data.
+# We fix this at the transport layer so every endpoint automatically gets it.
+# ---------------------------------------------------------------------------
+import math
+from fastapi.responses import JSONResponse
+
+def _sanitize(obj: Any) -> Any:
+    """Recursively replace NaN/Inf floats with None so JSON serialises cleanly."""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize(v) for v in obj]
+    return obj
+
+class SafeJSONResponse(JSONResponse):
+    """JSONResponse that sanitizes NaN/Inf before encoding."""
+    def render(self, content: Any) -> bytes:
+        return super().render(_sanitize(content))
+
+# Make SafeJSONResponse the default for every endpoint
+app.router.default_response_class = SafeJSONResponse
+
 # Auto Initialize DB tables on startup
 @app.on_event("startup")
 def startup_event():
