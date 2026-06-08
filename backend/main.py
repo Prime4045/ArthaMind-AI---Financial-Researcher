@@ -40,13 +40,26 @@ class ReportGenerateRequest(BaseModel):
     pf_text: str
     master_text: str
 
+class EnhancedSIPRequest(BaseModel):
+    monthly_investment: float
+    expected_return_rate: float
+    years: int
+    step_up_pct: float = 0.0
+    inflation_rate: float = 0.0
+    mode: str = "investment"
+    target_amount: float = 0.0
+
+class SIPCompareRequest(BaseModel):
+    sip_a: EnhancedSIPRequest
+    sip_b: EnhancedSIPRequest
+
 # Import Database & Core Modules
 from backend.db.session import get_db, SessionLocal
 from backend.db.models import init_db, StockCache, Watchlist, Expense, OptimizedPortfolio, StockInfoCache, StockHistoryCache
 from backend.data.fetcher import fetch_stock_data, DEFAULT_TICKERS
 from backend.data.indicators import calculate_technical_indicators
 from backend.data.optimizer import optimize_portfolio
-from backend.utils.calculators import calculate_sip, calculate_capital_gains_tax
+from backend.utils.calculators import calculate_sip, calculate_capital_gains_tax, calculate_sip_enhanced
 from backend.utils.pdf_report import generate_pdf_report
 from backend.agents.graph import run_agent_graph_stream
 
@@ -1091,3 +1104,223 @@ def download_report(filename: str):
         raise HTTPException(status_code=404, detail="PDF report file not found.")
         
     return FileResponse(file_path, media_type="application/pdf", filename=safe_filename)
+
+# ==================== ADDITIONAL COMPARATORS & ADVISORS ====================
+
+@app.post("/api/personal-finance/sip/enhanced")
+def post_calculate_sip_enhanced(req: EnhancedSIPRequest):
+    """
+    Calculates advanced Systematic Investment Plan metrics (Step-up and Goal planning).
+    """
+    return calculate_sip_enhanced(
+        monthly_investment=req.monthly_investment,
+        expected_return_rate=req.expected_return_rate / 100,
+        years=req.years,
+        step_up_pct=req.step_up_pct,
+        inflation_rate=req.inflation_rate,
+        mode=req.mode,
+        target_amount=req.target_amount
+    )
+
+@app.post("/api/personal-finance/sip/compare")
+def post_compare_sips(req: SIPCompareRequest):
+    """
+    Compares two Systematic Investment Plan configurations side-by-side.
+    """
+    res_a = calculate_sip_enhanced(
+        monthly_investment=req.sip_a.monthly_investment,
+        expected_return_rate=req.sip_a.expected_return_rate / 100,
+        years=req.sip_a.years,
+        step_up_pct=req.sip_a.step_up_pct,
+        inflation_rate=req.sip_a.inflation_rate,
+        mode=req.sip_a.mode,
+        target_amount=req.sip_a.target_amount
+    )
+    res_b = calculate_sip_enhanced(
+        monthly_investment=req.sip_b.monthly_investment,
+        expected_return_rate=req.sip_b.expected_return_rate / 100,
+        years=req.sip_b.years,
+        step_up_pct=req.sip_b.step_up_pct,
+        inflation_rate=req.sip_b.inflation_rate,
+        mode=req.sip_b.mode,
+        target_amount=req.sip_b.target_amount
+    )
+    return {
+        "sip_a": res_a,
+        "sip_b": res_b
+    }
+
+@app.get("/api/stocks/compare")
+def compare_stocks(ticker_a: str, ticker_b: str, period: str = "1y", db: Session = Depends(get_db)):
+    """
+    Compares two stock tickers side-by-side:
+    - Merges Technical, Fundamental, Sentiment, and ML prediction scores
+    - Normalizes historical price curves to percentage changes starting at 0%
+    """
+    ticker_a = ticker_a.strip().upper()
+    ticker_b = ticker_b.strip().upper()
+    
+    # Fetch cached info for both tickers
+    info_a = get_cached_stock_info(ticker_a, db)
+    info_b = get_cached_stock_info(ticker_b, db)
+    
+    # Fetch historical data for both tickers
+    try:
+        hist_a = get_stock_history(ticker_a, period=period, db=db)
+    except Exception:
+        hist_a = []
+    try:
+        hist_b = get_stock_history(ticker_b, period=period, db=db)
+    except Exception:
+        hist_b = []
+        
+    # Fetch ML recommendations
+    try:
+        rec_a = get_stock_recommendation(ticker_a, db)
+    except Exception:
+        rec_a = None
+    try:
+        rec_b = get_stock_recommendation(ticker_b, db)
+    except Exception:
+        rec_b = None
+        
+    # Normalize history to percentage changes starting at 0%
+    normalized_history = []
+    if hist_a and hist_b:
+        df_a = pd.DataFrame(hist_a)
+        df_b = pd.DataFrame(hist_b)
+        
+        if "Date" in df_a.columns and "Close" in df_a.columns and "Date" in df_b.columns and "Close" in df_b.columns:
+            df_a = df_a.set_index("Date")
+            df_b = df_b.set_index("Date")
+            
+            combined = df_a[["Close"]].rename(columns={"Close": "Close_A"}).join(
+                df_b[["Close"]].rename(columns={"Close": "Close_B"}),
+                how="inner"
+            )
+            
+            if not combined.empty:
+                base_a = float(combined.iloc[0]["Close_A"])
+                base_b = float(combined.iloc[0]["Close_B"])
+                
+                if base_a > 0 and base_b > 0:
+                    combined["return_a"] = ((combined["Close_A"] - base_a) / base_a) * 100
+                    combined["return_b"] = ((combined["Close_B"] - base_b) / base_b) * 100
+                    
+                    combined = combined.reset_index()
+                    normalized_history = combined[["Date", "return_a", "return_b"]].to_dict(orient="records")
+                    
+    return {
+        "stock_a": {
+            "info": info_a,
+            "recommendation": rec_a
+        },
+        "stock_b": {
+            "info": info_b,
+            "recommendation": rec_b
+        },
+        "normalized_history": normalized_history
+    }
+
+@app.get("/api/mutual-funds/analysis")
+def get_mutual_funds_analysis(db: Session = Depends(get_db)):
+    """
+    Retrieves NAV details and calculates CAGR (1M, 6M, 1Y), annualized Volatility, 
+    and Sharpe Ratio for the top 5 curated mutual funds.
+    """
+    funds = [
+        {"ticker": "0P0000XW0G.BO", "name": "Mirae Asset Large Cap Fund", "category": "Large Cap"},
+        {"ticker": "0P0000XVKY.BO", "name": "HDFC Mid-Cap Opportunities Fund", "category": "Mid Cap"},
+        {"ticker": "0P0000Y25B.BO", "name": "Nippon India Small Cap Fund", "category": "Small Cap"},
+        {"ticker": "0P0000XVUI.BO", "name": "Parag Parikh Flexi Cap Fund", "category": "Flexi Cap"},
+        {"ticker": "0P0000XVUS.BO", "name": "ICICI Prudential Equity & Debt Fund", "category": "Hybrid"}
+    ]
+    
+    results = []
+    chart_series = []
+    
+    for fund in funds:
+        ticker = fund["ticker"]
+        try:
+            info = get_cached_stock_info(ticker, db)
+            history = get_stock_history(ticker, period="1y", db=db)
+        except Exception as e:
+            logger.error(f"Error fetching mutual fund {ticker}: {e}")
+            continue
+            
+        if not history or len(history) < 10:
+            continue
+            
+        df = pd.DataFrame(history)
+        if "Close" not in df.columns:
+            continue
+            
+        closes = df["Close"].astype(float).tolist()
+        
+        start_1y = closes[0]
+        end_1y = closes[-1]
+        
+        start_1m = closes[-22] if len(closes) >= 22 else closes[0]
+        start_6m = closes[-126] if len(closes) >= 126 else closes[0]
+        
+        return_1m = ((end_1y - start_1m) / start_1m) * 100
+        return_6m = ((end_1y - start_6m) / start_6m) * 100
+        return_1y = ((end_1y - start_1y) / start_1y) * 100
+        
+        df["Daily_Return"] = df["Close"].pct_change()
+        daily_std = df["Daily_Return"].std()
+        volatility = daily_std * (252 ** 0.5) * 100 if not pd.isna(daily_std) else 0.0
+        
+        risk_free = 6.0
+        excess_return = return_1y - risk_free
+        sharpe = excess_return / volatility if volatility > 0 else 0.0
+        
+        aum = info.get("totalAssets") or info.get("netAssets") or 0
+        rating = info.get("morningStarOverallRating") or 4
+        risk_rating = info.get("morningStarRiskRating") or 3
+        ytd_return = info.get("ytdReturn") or 0.0
+        if ytd_return > 0.0 and ytd_return < 1.0:
+            ytd_return = ytd_return * 100
+        beta = info.get("beta3Year") or 0.0
+        
+        results.append({
+            "ticker": ticker,
+            "name": fund["name"],
+            "long_name": info.get("longName") or fund["name"],
+            "category": fund["category"],
+            "nav": end_1y,
+            "return_1m": float(return_1m),
+            "return_6m": float(return_6m),
+            "return_1y": float(return_1y),
+            "volatility": float(volatility),
+            "sharpe_ratio": float(sharpe),
+            "aum": int(aum),
+            "morningstar_rating": int(rating),
+            "morningstar_risk": int(risk_rating),
+            "ytd_return": float(ytd_return),
+            "beta": float(beta)
+        })
+        
+        for idx, row in df.iterrows():
+            date_str = str(row["Date"])
+            val_1y = float(row["Close"])
+            pct_gain = ((val_1y - start_1y) / start_1y) * 100
+            
+            found = False
+            for item in chart_series:
+                if item["Date"] == date_str:
+                    item[fund["category"]] = pct_gain
+                    found = True
+                    break
+            if not found:
+                chart_series.append({
+                    "Date": date_str,
+                    fund["category"]: pct_gain
+                })
+                
+    chart_series = sorted(chart_series, key=lambda x: x["Date"])
+    
+    return {
+        "funds": results,
+        "chart_data": chart_series
+    }

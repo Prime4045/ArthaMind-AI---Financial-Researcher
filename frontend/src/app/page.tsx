@@ -83,8 +83,9 @@ function renderMarkdown(text: string): React.ReactNode {
       }
       
       if (tableRows.length >= 1) {
-        const rawHeaders = tableRows[0].split("|");
-        const headers = rawHeaders.map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+        let headers = tableRows[0].split("|").map(c => c.trim());
+        if (headers.length > 0 && headers[0] === "") headers.shift();
+        if (headers.length > 0 && headers[headers.length - 1] === "") headers.pop();
         
         let startDataIdx = 1;
         if (tableRows.length > 1 && tableRows[1].includes("---")) {
@@ -93,7 +94,9 @@ function renderMarkdown(text: string): React.ReactNode {
         
         const dataRows: string[][] = [];
         for (let r = startDataIdx; r < tableRows.length; r++) {
-          const cells = tableRows[r].split("|").map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+          let cells = tableRows[r].split("|").map(c => c.trim());
+          if (cells.length > 0 && cells[0] === "") cells.shift();
+          if (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
           if (cells.length > 0) {
             dataRows.push(cells);
           }
@@ -313,6 +316,196 @@ export default function Dashboard() {
   const [expenseType, setExpenseType] = useState<"Income" | "Expense">("Expense");
   const [expenseDesc, setExpenseDesc] = useState<string>("");
   const [expensesList, setExpensesList] = useState<any[]>([]);
+
+  // Workspace sub-tab for personal finance
+  const [activeFinanceTab, setActiveFinanceTab] = useState<"sip" | "compare_sip" | "tax_expense" | "mf">("sip");
+
+  // Stock Comparator State
+  const [compareTickerA, setCompareTickerA] = useState("RELIANCE.NS");
+  const [compareTickerB, setCompareTickerB] = useState("TCS.NS");
+  const [compareData, setCompareData] = useState<any>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareSearchA, setCompareSearchA] = useState("");
+  const [compareSearchB, setCompareSearchB] = useState("");
+  const [compareSuggestionsA, setCompareSuggestionsA] = useState<any[]>([]);
+  const [compareSuggestionsB, setCompareSuggestionsB] = useState<any[]>([]);
+  const [showCompareSuggestionsA, setShowCompareSuggestionsA] = useState(false);
+  const [showCompareSuggestionsB, setShowCompareSuggestionsB] = useState(false);
+
+  // Advanced SIP State
+  const [sipMode, setSipMode] = useState<"investment" | "goal">("investment");
+  const [sipStepUp, setSipStepUp] = useState<number>(0);
+  const [sipInflation, setSipInflation] = useState<number>(0);
+  const [sipTargetAmount, setSipTargetAmount] = useState<number>(1000000);
+  const [sipEnhancedResults, setSipEnhancedResults] = useState<any>(null);
+  const [sipEnhancedLoading, setSipEnhancedLoading] = useState(false);
+
+  // Compare SIP State
+  const [compSipAmountA, setCompSipAmountA] = useState<number>(5000);
+  const [compSipReturnA, setCompSipReturnA] = useState<number>(12);
+  const [compSipYearsA, setCompSipYearsA] = useState<number>(10);
+  const [compSipStepUpA, setCompSipStepUpA] = useState<number>(0);
+
+  const [compSipAmountB, setCompSipAmountB] = useState<number>(5000);
+  const [compSipReturnB, setCompSipReturnB] = useState<number>(15);
+  const [compSipYearsB, setCompSipYearsB] = useState<number>(10);
+  const [compSipStepUpB, setCompSipStepUpB] = useState<number>(0);
+
+  const [sipCompareResults, setSipCompareResults] = useState<any>(null);
+  const [sipCompareLoading, setSipCompareLoading] = useState(false);
+
+  // Mutual Fund Analyst State
+  const [mfData, setMfData] = useState<any>(null);
+  const [mfLoading, setMfLoading] = useState(false);
+
+  // Stock Comparison Fetcher
+  const fetchStockComparison = async (tickerA: string, tickerB: string) => {
+    setCompareLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/stocks/compare?ticker_a=${tickerA}&ticker_b=${tickerB}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCompareData(data);
+      }
+    } catch (err) {
+      console.error("Comparison fetch failed:", err);
+    } finally {
+      setCompareLoading(false);
+    }
+  };
+
+  // Enhanced SIP Run
+  const runSipEnhancedCalc = async () => {
+    setSipEnhancedLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/personal-finance/sip/enhanced`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          monthly_investment: sipMonthly,
+          expected_return_rate: sipReturn,
+          years: sipYears,
+          step_up_pct: sipStepUp,
+          inflation_rate: sipInflation,
+          mode: sipMode,
+          target_amount: sipTargetAmount
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSipEnhancedResults(data);
+        if (sipMode === "goal") {
+          setSipMonthly(Math.round(data.monthly_investment));
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSipEnhancedLoading(false);
+    }
+  };
+
+  // Compare SIP Run
+  const runSipCompareCalc = async () => {
+    setSipCompareLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/personal-finance/sip/compare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sip_a: {
+            monthly_investment: compSipAmountA,
+            expected_return_rate: compSipReturnA,
+            years: compSipYearsA,
+            step_up_pct: compSipStepUpA,
+            inflation_rate: 0,
+            mode: "investment",
+            target_amount: 0
+          },
+          sip_b: {
+            monthly_investment: compSipAmountB,
+            expected_return_rate: compSipReturnB,
+            years: compSipYearsB,
+            step_up_pct: compSipStepUpB,
+            inflation_rate: 0,
+            mode: "investment",
+            target_amount: 0
+          }
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSipCompareResults(data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSipCompareLoading(false);
+    }
+  };
+
+  // Mutual Funds Analysis Fetcher
+  const fetchMutualFundsAnalysis = async () => {
+    setMfLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/mutual-funds/analysis`);
+      if (res.ok) {
+        const data = await res.json();
+        setMfData(data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setMfLoading(false);
+    }
+  };
+
+  // Comparator Search debounces & effects
+  useEffect(() => {
+    if (activeWorkspaceTab === "Comparator") {
+      fetchStockComparison(compareTickerA, compareTickerB);
+    }
+  }, [activeWorkspaceTab, compareTickerA, compareTickerB]);
+
+  useEffect(() => {
+    if (activeFinanceTab === "mf") {
+      fetchMutualFundsAnalysis();
+    }
+  }, [activeFinanceTab]);
+
+  useEffect(() => {
+    if (compareSearchA.trim().length < 2) {
+      setCompareSuggestionsA([]);
+      return;
+    }
+    const delay = setTimeout(async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/stocks/search?q=${encodeURIComponent(compareSearchA.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          setCompareSuggestionsA(data.results || []);
+        }
+      } catch (e) {}
+    }, 200);
+    return () => clearTimeout(delay);
+  }, [compareSearchA]);
+
+  useEffect(() => {
+    if (compareSearchB.trim().length < 2) {
+      setCompareSuggestionsB([]);
+      return;
+    }
+    const delay = setTimeout(async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/stocks/search?q=${encodeURIComponent(compareSearchB.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          setCompareSuggestionsB(data.results || []);
+        }
+      } catch (e) {}
+    }, 200);
+    return () => clearTimeout(delay);
+  }, [compareSearchB]);
 
   // Auto scroll agent console logs
   useEffect(() => {
@@ -1848,6 +2041,292 @@ export default function Dashboard() {
                         </div>
                       </div>
                     )}
+
+                    {/* 5. COMPARATOR TAB */}
+                    {activeWorkspaceTab === "Comparator" && (
+                      <div className="space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-900/30">
+                          {/* Search Stock A */}
+                          <div className="flex-1 relative">
+                            <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Stock A</label>
+                            <div className="relative">
+                              <Search className="absolute left-3.5 top-3 h-3.5 w-3.5 text-slate-400" />
+                              <input 
+                                type="text"
+                                value={compareSearchA}
+                                onChange={(e) => {
+                                  setCompareSearchA(e.target.value);
+                                  setShowCompareSuggestionsA(true);
+                                }}
+                                onFocus={() => setShowCompareSuggestionsA(true)}
+                                placeholder="Search Stock A (e.g. TCS)"
+                                className={`pl-9 pr-3 py-2 text-xs rounded-lg w-full focus:outline-none focus:ring-1 focus:ring-indigo-500 border ${themeClasses.input}`}
+                              />
+                              {showCompareSuggestionsA && compareSuggestionsA.length > 0 && (
+                                <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-[#0E1322] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 max-h-40 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-850">
+                                  {compareSuggestionsA.map((item) => (
+                                    <button
+                                      key={item.symbol}
+                                      type="button"
+                                      onClick={() => {
+                                        setCompareTickerA(item.symbol);
+                                        setCompareSearchA("");
+                                        setShowCompareSuggestionsA(false);
+                                      }}
+                                      className="w-full text-left px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors flex justify-between items-center text-[11px]"
+                                    >
+                                      <div className="flex flex-col">
+                                        <span className="font-bold text-slate-800 dark:text-slate-200">{item.name}</span>
+                                        <span className="text-slate-400 text-3xs font-semibold">{item.symbol}</span>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-3xs text-indigo-400 font-extrabold mt-1 block">Active: {compareTickerA}</span>
+                          </div>
+
+                          {/* Search Stock B */}
+                          <div className="flex-1 relative">
+                            <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Stock B</label>
+                            <div className="relative">
+                              <Search className="absolute left-3.5 top-3 h-3.5 w-3.5 text-slate-400" />
+                              <input 
+                                type="text"
+                                value={compareSearchB}
+                                onChange={(e) => {
+                                  setCompareSearchB(e.target.value);
+                                  setShowCompareSuggestionsB(true);
+                                }}
+                                onFocus={() => setShowCompareSuggestionsB(true)}
+                                placeholder="Search Stock B (e.g. INFY)"
+                                className={`pl-9 pr-3 py-2 text-xs rounded-lg w-full focus:outline-none focus:ring-1 focus:ring-indigo-500 border ${themeClasses.input}`}
+                              />
+                              {showCompareSuggestionsB && compareSuggestionsB.length > 0 && (
+                                <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-[#0E1322] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 max-h-40 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-850">
+                                  {compareSuggestionsB.map((item) => (
+                                    <button
+                                      key={item.symbol}
+                                      type="button"
+                                      onClick={() => {
+                                        setCompareTickerB(item.symbol);
+                                        setCompareSearchB("");
+                                        setShowCompareSuggestionsB(false);
+                                      }}
+                                      className="w-full text-left px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors flex justify-between items-center text-[11px]"
+                                    >
+                                      <div className="flex flex-col">
+                                        <span className="font-bold text-slate-800 dark:text-slate-200">{item.name}</span>
+                                        <span className="text-slate-400 text-3xs font-semibold">{item.symbol}</span>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-3xs text-emerald-400 font-extrabold mt-1 block">Active: {compareTickerB}</span>
+                          </div>
+                        </div>
+
+                        {compareLoading ? (
+                          <div className="text-center py-20 text-slate-400 text-xs font-semibold">
+                            <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-indigo-500" />
+                            Fetching comparative metrics...
+                          </div>
+                        ) : compareData ? (
+                          <div className="space-y-6">
+                            {/* Normalized return comparison chart */}
+                            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E1322]/20">
+                              <h4 className="font-bold text-slate-800 dark:text-white text-xs mb-3 flex items-center justify-between">
+                                <span>Relative Performance comparison (1Y returns)</span>
+                                <span className="text-[10px] text-slate-400">Base value normalized to 0%</span>
+                              </h4>
+                              <div className="h-[220px] w-full">
+                                {isMounted && compareData.normalized_history && compareData.normalized_history.length > 0 ? (
+                                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                    <LineChart data={compareData.normalized_history} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
+                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
+                                      <YAxis unit="%" stroke="#64748B" fontSize={8} />
+                                      <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                      <Legend wrapperStyle={{ fontSize: 9 }} />
+                                      <Line type="monotone" dataKey="return_a" stroke="#6366F1" strokeWidth={2} dot={false} name={compareTickerA} />
+                                      <Line type="monotone" dataKey="return_b" stroke="#10B981" strokeWidth={2} dot={false} name={compareTickerB} />
+                                    </LineChart>
+                                  </ResponsiveContainer>
+                                ) : (
+                                  <div className="h-full flex items-center justify-center text-slate-500 text-xs">No historical returns overlap available.</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* side-by-side comparison table */}
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800/80">
+                              <table className="w-full text-3xs border-collapse">
+                                <thead>
+                                  <tr className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 font-bold text-slate-800 dark:text-slate-200 text-left">
+                                    <th className="p-2 border-r border-slate-200 dark:border-slate-800/60">Metric</th>
+                                    <th className="p-2 border-r border-slate-200 dark:border-slate-800/60 text-indigo-500 dark:text-indigo-400 font-black">{compareTickerA}</th>
+                                    <th className="p-2 text-emerald-500 dark:text-emerald-400 font-black">{compareTickerB}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
+                                  {/* General */}
+                                  <tr>
+                                    <td className="p-2 font-bold text-slate-400 uppercase tracking-wide bg-slate-50/50 dark:bg-slate-950/20" colSpan={3}>General Profile</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">Company Name</td>
+                                    <td className="p-2 font-bold text-slate-700 dark:text-slate-200 border-r border-slate-200 dark:border-slate-800/60">{compareData.stock_a.info.name}</td>
+                                    <td className="p-2 font-bold text-slate-700 dark:text-slate-200">{compareData.stock_b.info.name}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">Sector / Industry</td>
+                                    <td className="p-2 text-slate-600 dark:text-slate-400 border-r border-slate-200 dark:border-slate-800/60">{compareData.stock_a.info.sector} / {compareData.stock_a.info.industry}</td>
+                                    <td className="p-2 text-slate-600 dark:text-slate-400">{compareData.stock_b.info.sector} / {compareData.stock_b.info.industry}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">Market Capitalization</td>
+                                    <td className="p-2 text-slate-700 dark:text-slate-200 border-r border-slate-200 dark:border-slate-800/60">{formatMarketCap(compareData.stock_a.info.marketCap)}</td>
+                                    <td className="p-2 text-slate-700 dark:text-slate-200">{formatMarketCap(compareData.stock_b.info.marketCap)}</td>
+                                  </tr>
+
+                                  {/* Technicals */}
+                                  <tr>
+                                    <td className="p-2 font-bold text-slate-400 uppercase tracking-wide bg-slate-50/50 dark:bg-slate-950/20" colSpan={3}>Technical Metrics</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">Current Close Price</td>
+                                    <td className="p-2 font-bold text-slate-700 dark:text-slate-200 border-r border-slate-200 dark:border-slate-800/60">{getCurrencySymbol(compareTickerA)}{compareData.stock_a.info.currentPrice?.toFixed(2)}</td>
+                                    <td className="p-2 font-bold text-slate-700 dark:text-slate-200">{getCurrencySymbol(compareTickerB)}{compareData.stock_b.info.currentPrice?.toFixed(2)}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">RSI (14) Momentum</td>
+                                    {(() => {
+                                      const rsiA = compareData.stock_a.recommendation?.signals.find((s: any) => s.name.includes("RSI"))?.value || "N/A";
+                                      const rsiB = compareData.stock_b.recommendation?.signals.find((s: any) => s.name.includes("RSI"))?.value || "N/A";
+                                      return (
+                                        <>
+                                          <td className="p-2 text-slate-700 dark:text-slate-200 border-r border-slate-200 dark:border-slate-800/60 font-semibold">{rsiA}</td>
+                                          <td className="p-2 text-slate-700 dark:text-slate-200 font-semibold">{rsiB}</td>
+                                        </>
+                                      );
+                                    })()}
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">MACD Oscillator</td>
+                                    {(() => {
+                                      const macdA = compareData.stock_a.recommendation?.signals.find((s: any) => s.name.includes("MACD"))?.status || "N/A";
+                                      const macdB = compareData.stock_b.recommendation?.signals.find((s: any) => s.name.includes("MACD"))?.status || "N/A";
+                                      return (
+                                        <>
+                                          <td className={`p-2 border-r border-slate-200 dark:border-slate-800/60 font-bold ${macdA === "Bullish" ? "text-emerald-550 dark:text-emerald-400" : macdA === "Bearish" ? "text-rose-550 dark:text-rose-400" : ""}`}>{macdA}</td>
+                                          <td className={`p-2 font-bold ${macdB === "Bullish" ? "text-emerald-550 dark:text-emerald-400" : macdB === "Bearish" ? "text-rose-550 dark:text-rose-400" : ""}`}>{macdB}</td>
+                                        </>
+                                      );
+                                    })()}
+                                  </tr>
+
+                                  {/* Fundamentals */}
+                                  <tr>
+                                    <td className="p-2 font-bold text-slate-400 uppercase tracking-wide bg-slate-50/50 dark:bg-slate-950/20" colSpan={3}>Fundamental Valuations</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">P/E Ratio</td>
+                                    {(() => {
+                                      const peA = compareData.stock_a.info.peRatio;
+                                      const peB = compareData.stock_b.info.peRatio;
+                                      const isLowerA = peA && peB ? peA < peB : false;
+                                      return (
+                                        <>
+                                          <td className={`p-2 border-r border-slate-200 dark:border-slate-800/60 font-bold ${isLowerA ? "text-emerald-500" : ""}`}>{peA ? `${peA.toFixed(2)}x` : "N/A"}</td>
+                                          <td className={`p-2 font-bold ${!isLowerA && peB ? "text-emerald-500" : ""}`}>{peB ? `${peB.toFixed(2)}x` : "N/A"}</td>
+                                        </>
+                                      );
+                                    })()}
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">Return on Equity (ROE)</td>
+                                    {(() => {
+                                      const roeA = compareData.stock_a.info.roe;
+                                      const roeB = compareData.stock_b.info.roe;
+                                      const isHigherA = roeA && roeB ? roeA > roeB : false;
+                                      return (
+                                        <>
+                                          <td className={`p-2 border-r border-slate-200 dark:border-slate-800/60 font-bold ${isHigherA ? "text-emerald-500" : ""}`}>{roeA ? `${(roeA * 100).toFixed(2)}%` : "N/A"}</td>
+                                          <td className={`p-2 font-bold ${!isHigherA && roeB ? "text-emerald-500" : ""}`}>{roeB ? `${(roeB * 100).toFixed(2)}%` : "N/A"}</td>
+                                        </>
+                                      );
+                                    })()}
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">Dividend Yield</td>
+                                    {(() => {
+                                      const divA = compareData.stock_a.info.dividendYield;
+                                      const divB = compareData.stock_b.info.dividendYield;
+                                      const isHigherA = divA && divB ? divA > divB : false;
+                                      return (
+                                        <>
+                                          <td className={`p-2 border-r border-slate-200 dark:border-slate-800/60 font-bold ${isHigherA ? "text-emerald-500" : ""}`}>{divA ? `${(divA * 100).toFixed(2)}%` : "0.00%"}</td>
+                                          <td className={`p-2 font-bold ${!isHigherA && divB ? "text-emerald-500" : ""}`}>{divB ? `${(divB * 100).toFixed(2)}%` : "0.00%"}</td>
+                                        </>
+                                      );
+                                    })()}
+                                  </tr>
+
+                                  {/* AI Consensus */}
+                                  <tr>
+                                    <td className="p-2 font-bold text-slate-400 uppercase tracking-wide bg-slate-50/50 dark:bg-slate-950/20" colSpan={3}>AI & Sentiment Analyst Scoring</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">Headline News Sentiment</td>
+                                    {(() => {
+                                      const sentA = compareData.stock_a.recommendation?.signals.find((s: any) => s.name.includes("Sentiment"))?.value || "N/A";
+                                      const sentB = compareData.stock_b.recommendation?.signals.find((s: any) => s.name.includes("Sentiment"))?.value || "N/A";
+                                      return (
+                                        <>
+                                          <td className="p-2 text-slate-700 dark:text-slate-200 border-r border-slate-200 dark:border-slate-800/60 font-bold">{sentA}</td>
+                                          <td className="p-2 text-slate-700 dark:text-slate-200 font-bold">{sentB}</td>
+                                        </>
+                                      );
+                                    })()}
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">ML Next-Day price target</td>
+                                    {(() => {
+                                      const changeA = compareData.stock_a.recommendation?.predicted_change_pct || 0.0;
+                                      const changeB = compareData.stock_b.recommendation?.predicted_change_pct || 0.0;
+                                      return (
+                                        <>
+                                          <td className={`p-2 border-r border-slate-200 dark:border-slate-800/60 font-bold ${changeA >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{changeA >= 0 ? "+" : ""}{changeA.toFixed(2)}%</td>
+                                          <td className={`p-2 font-bold ${changeB >= 0 ? "text-emerald-500" : "text-rose-500"}`}>{changeB >= 0 ? "+" : ""}{changeB.toFixed(2)}%</td>
+                                        </>
+                                      );
+                                    })()}
+                                  </tr>
+                                  <tr>
+                                    <td className="p-2 font-semibold text-slate-500 border-r border-slate-200 dark:border-slate-800/60">Lead AI consensus Recommendation</td>
+                                    <td className="p-2 border-r border-slate-200 dark:border-slate-800/60">
+                                      <span className={`px-2 py-0.5 rounded font-black ${compareData.stock_a.recommendation?.recommendation.includes("BUY") ? "bg-emerald-550/10 text-emerald-500" : compareData.stock_a.recommendation?.recommendation.includes("SELL") ? "bg-rose-550/10 text-rose-550" : "bg-amber-500/10 text-amber-500"}`}>
+                                        {compareData.stock_a.recommendation?.recommendation || "N/A"}
+                                      </span>
+                                    </td>
+                                    <td className="p-2">
+                                      <span className={`px-2 py-0.5 rounded font-black ${compareData.stock_b.recommendation?.recommendation.includes("BUY") ? "bg-emerald-550/10 text-emerald-500" : compareData.stock_b.recommendation?.recommendation.includes("SELL") ? "bg-rose-550/10 text-rose-550" : "bg-amber-500/10 text-amber-500"}`}>
+                                        {compareData.stock_b.recommendation?.recommendation || "N/A"}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-20 text-slate-500 text-xs">Enter symbols above and perform peer comparison analysis.</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2229,241 +2708,625 @@ export default function Dashboard() {
 
         {/* ==================== TAB 3: PERSONAL FINANCE ==================== */}
         {activeTab === "finance" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="col-span-1 lg:col-span-3 flex flex-col space-y-6">
             
-            {/* Calculators (SIP & Tax) */}
-            <div className="lg:col-span-1 flex flex-col space-y-6">
-              
-              {/* SIP Calculator */}
-              <div className={`p-5 rounded-2xl border flex flex-col space-y-4 ${themeClasses.card}`}>
-                <h3 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800 flex items-center space-x-2">
-                  <Calculator className="h-4 w-4 text-emerald-500" />
-                  <span>Indian Equity SIP Calculator</span>
-                </h3>
-                
-                <div className="space-y-3 text-xs">
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Monthly Investment (₹)</label>
-                    <input 
-                      type="number" 
-                      value={sipMonthly} 
-                      onChange={(e) => setSipMonthly(Number(e.target.value))}
-                      className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
-                    />
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Expected Annual Return (%)</label>
-                    <input 
-                      type="number" 
-                      value={sipReturn} 
-                      onChange={(e) => setSipReturn(Number(e.target.value))}
-                      className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
-                    />
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Time Period (Years)</label>
-                    <input 
-                      type="number" 
-                      value={sipYears} 
-                      onChange={(e) => setSipYears(Number(e.target.value))}
-                      className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={runSIPCalc}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs py-2 rounded-xl transition-colors"
-                >
-                  Calculate Projections
-                </button>
-
-                {sipResults && (
-                  <div className="bg-slate-50 dark:bg-[#0E1322]/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 space-y-2 text-xs">
-                    <div className="flex justify-between border-b pb-1.5 border-slate-100 dark:border-slate-900 text-2xs text-slate-400">
-                      <span>Total Principal Invested</span>
-                      <span className="text-slate-800 dark:text-white font-semibold">₹{sipResults.total_invested.toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="flex justify-between border-b pb-1.5 border-slate-100 dark:border-slate-900 text-2xs text-slate-400">
-                      <span>SIP Future Wealth Value</span>
-                      <span className="text-emerald-500 font-bold">₹{sipResults.sip_future_value.toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="flex justify-between text-2xs text-slate-400">
-                      <span>Estimated SIP Gain</span>
-                      <span className="text-indigo-500 font-bold">₹{sipResults.sip_wealth_gain.toLocaleString("en-IN")}</span>
-                    </div>
-                  </div>
-                )}
+            {/* Sub-tab navigation */}
+            <div className="flex items-center justify-between border-b pb-4 mb-5 border-slate-200 dark:border-slate-800/80">
+              <div className="flex space-x-4 md:space-x-6 text-xs md:text-sm font-semibold overflow-x-auto scrollbar-none pb-1 flex-nowrap w-full">
+                {[
+                  { id: "sip", label: "Advanced SIP Planner" },
+                  { id: "compare_sip", label: "Compare SIPs" },
+                  { id: "tax_expense", label: "Tax & Expenses Ledger" },
+                  { id: "mf", label: "Mutual Fund Advisor" }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveFinanceTab(tab.id as any)}
+                    className={`transition-all pb-4 -mb-5 relative whitespace-nowrap cursor-pointer ${
+                      activeFinanceTab === tab.id
+                        ? "text-indigo-500 font-bold"
+                        : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    {tab.label}
+                    {activeFinanceTab === tab.id && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full shadow-sm"></span>
+                    )}
+                  </button>
+                ))}
               </div>
-
-              {/* Capital Gains Tax Estimator */}
-              <div className={`p-5 rounded-2xl border flex flex-col space-y-4 ${themeClasses.card}`}>
-                <h3 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800 flex items-center space-x-2">
-                  <DollarSign className="h-4 w-4 text-emerald-500" />
-                  <span>Capital Gains Tax Estimator</span>
-                </h3>
-
-                <div className="space-y-3 text-xs">
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Buy Value (₹)</label>
-                    <input 
-                      type="number" 
-                      value={taxBuy} 
-                      onChange={(e) => setTaxBuy(Number(e.target.value))}
-                      className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
-                    />
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Sell Value (₹)</label>
-                    <input 
-                      type="number" 
-                      value={taxSell} 
-                      onChange={(e) => setTaxSell(Number(e.target.value))}
-                      className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
-                    />
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Holding Period (Months)</label>
-                    <input 
-                      type="number" 
-                      value={taxMonths} 
-                      onChange={(e) => setTaxMonths(Number(e.target.value))}
-                      className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={runTaxCalc}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs py-2 rounded-xl transition-colors"
-                >
-                  Estimate Tax Liability
-                </button>
-
-                {taxResults && (
-                  <div className="bg-slate-50 dark:bg-[#0E1322]/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 space-y-2 text-xs">
-                    <div className="flex justify-between border-b pb-1.5 border-slate-100 dark:border-slate-900 text-2xs text-slate-400">
-                      <span>Gain Classification</span>
-                      <span className="text-slate-800 dark:text-white font-bold uppercase">{taxResults.gain_type}</span>
-                    </div>
-                    <div className="flex justify-between border-b pb-1.5 border-slate-100 dark:border-slate-900 text-2xs text-slate-400">
-                      <span>Total Capital Gain</span>
-                      <span className="text-emerald-500 font-semibold">₹{taxResults.capital_gain.toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="flex justify-between border-b pb-1.5 border-slate-100 dark:border-slate-900 text-2xs text-slate-400">
-                      <span>Estimated Tax ({taxResults.tax_rate_pct}%)</span>
-                      <span className="text-rose-500 font-bold">₹{taxResults.tax_payable.toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="flex justify-between text-2xs text-slate-400">
-                      <span>Net Gain (Post Tax)</span>
-                      <span className="text-indigo-500 font-bold">₹{taxResults.net_gain.toLocaleString("en-IN")}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
             </div>
 
-            {/* Expense Tracker Ledger */}
-            <div className="lg:col-span-2 flex flex-col space-y-6">
-              
-              {/* Add transaction form */}
-              <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
-                <h4 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800">Add Ledger Entry</h4>
-                
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 text-xs">
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Amount (₹)</label>
-                    <input 
-                      type="number" 
-                      value={expenseAmount}
-                      onChange={(e) => setExpenseAmount(Number(e.target.value))}
-                      className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
-                    />
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Category</label>
-                    <select 
-                      value={expenseCategory}
-                      onChange={(e) => setExpenseCategory(e.target.value)}
-                      className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
-                    >
-                      <option value="Salary">Salary</option>
-                      <option value="Dividends">Dividends</option>
-                      <option value="Equity Investment">Equity Investment</option>
-                      <option value="Food & Living">Food & Living</option>
-                      <option value="Tax Payment">Tax Payment</option>
-                      <option value="Rent">Rent</option>
-                      <option value="Others">Others</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Type</label>
-                    <select 
-                      value={expenseType}
-                      onChange={(e) => setExpenseType(e.target.value as "Income" | "Expense")}
-                      className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
-                    >
-                      <option value="Income">Income</option>
-                      <option value="Expense">Expense</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-2xs text-slate-400 font-bold">Note</label>
-                    <input 
-                      type="text" 
-                      value={expenseDesc}
-                      onChange={(e) => setExpenseDesc(e.target.value)}
-                      placeholder="Salary credited"
-                      className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
-                    />
-                  </div>
-                </div>
+            {/* Sub-tab Contents */}
+            <div>
+              {/* 1. ADVANCED SIP PLANNER */}
+              {activeFinanceTab === "sip" && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Left Controls Card */}
+                  <div className={`p-5 rounded-2xl border flex flex-col space-y-4 ${themeClasses.card}`}>
+                    <h4 className="font-bold text-slate-900 dark:text-white text-xs pb-2 border-b border-slate-200 dark:border-slate-800">SIP Investment Inputs</h4>
+                    
+                    <div className="flex space-x-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-lg border border-slate-200 dark:border-slate-800 mb-2">
+                      <button 
+                        onClick={() => setSipMode("investment")}
+                        className={`flex-1 py-1 rounded text-3xs font-bold transition-all ${sipMode === "investment" ? "bg-white dark:bg-[#131B31] text-indigo-500 border" : "text-slate-400"}`}
+                      >
+                        Wealth Growth
+                      </button>
+                      <button 
+                        onClick={() => setSipMode("goal")}
+                        className={`flex-1 py-1 rounded text-3xs font-bold transition-all ${sipMode === "goal" ? "bg-white dark:bg-[#131B31] text-indigo-500 border" : "text-slate-400"}`}
+                      >
+                        Target Goal
+                      </button>
+                    </div>
 
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={addExpenseItem}
-                    className="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition-colors flex items-center space-x-1.5"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Log Transaction</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Transactions List */}
-              <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
-                <h4 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800">Ledger Database</h4>
-                
-                <div className="mt-4 space-y-2.5 max-h-[350px] overflow-y-auto">
-                  {expensesList.map((item) => (
-                    <div key={item.id} className="bg-slate-50 dark:bg-[#0E1322]/40 p-3 md:p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex justify-between items-center gap-3 text-xs w-full min-w-0">
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-slate-800 dark:text-white truncate">{item.category}</div>
-                        <div className="text-2xs text-slate-400 truncate">{item.description || "No description"}</div>
-                        <div className="text-3xs text-slate-500">{item.date}</div>
+                    <div className="space-y-3.5 text-xs">
+                      {sipMode === "investment" ? (
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Monthly SIP Amount (₹)</label>
+                          <input 
+                            type="number" 
+                            value={sipMonthly} 
+                            onChange={(e) => setSipMonthly(Number(e.target.value))}
+                            className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Target Corpus Goal (₹)</label>
+                          <input 
+                            type="number" 
+                            value={sipTargetAmount} 
+                            onChange={(e) => setSipTargetAmount(Number(e.target.value))}
+                            className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
+                          />
+                        </div>
+                      )}
+                      
+                      <div className="flex grid grid-cols-2 gap-3">
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Expected Return (%)</label>
+                          <input 
+                            type="number" 
+                            value={sipReturn} 
+                            onChange={(e) => setSipReturn(Number(e.target.value))}
+                            className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
+                          />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Duration (Years)</label>
+                          <input 
+                            type="number" 
+                            value={sipYears} 
+                            onChange={(e) => setSipYears(Number(e.target.value))}
+                            className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
+                          />
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-3 md:space-x-6 shrink-0">
-                        <span className={`font-bold text-sm ${item.type === "Income" ? "text-emerald-500" : "text-rose-500"}`}>
-                          {item.type === "Income" ? "+" : "-"} ₹{item.amount.toLocaleString("en-IN")}
-                        </span>
+
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex justify-between text-2xs font-bold">
+                          <span className="text-slate-400">Annual Step-up (%)</span>
+                          <span className="text-indigo-400">{sipStepUp}% Increase</span>
+                        </div>
+                        <input 
+                          type="range"
+                          min="0"
+                          max="25"
+                          step="1"
+                          value={sipStepUp}
+                          onChange={(e) => setSipStepUp(Number(e.target.value))}
+                          className="w-full h-1 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex justify-between text-2xs font-bold">
+                          <span className="text-slate-400">Inflation Rate (%)</span>
+                          <span className="text-rose-400">{sipInflation}% Discount</span>
+                        </div>
+                        <input 
+                          type="range"
+                          min="0"
+                          max="12"
+                          step="1"
+                          value={sipInflation}
+                          onChange={(e) => setSipInflation(Number(e.target.value))}
+                          className="w-full h-1 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={runSipEnhancedCalc}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2.5 rounded-xl transition-colors w-full flex items-center justify-center space-x-1.5"
+                    >
+                      {sipEnhancedLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                      <span>Calculate Roadmap</span>
+                    </button>
+                  </div>
+
+                  {/* Right Projections Panel */}
+                  <div className="lg:col-span-2 flex flex-col space-y-6">
+                    {sipEnhancedResults ? (
+                      <div className="space-y-6">
+                        {/* Highlights Row */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10`}>
+                            <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Total Principal</span>
+                            <span className="text-base font-black text-slate-800 dark:text-white mt-1 block">₹{sipEnhancedResults.total_invested.toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10`}>
+                            <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Wealth Gain</span>
+                            <span className="text-base font-black text-emerald-500 mt-1 block">+₹{sipEnhancedResults.wealth_gain.toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10`}>
+                            <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Nominal Corpus</span>
+                            <span className="text-base font-black text-indigo-400 mt-1 block">₹{sipEnhancedResults.future_value.toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10`}>
+                            <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Real Purchasing Power</span>
+                            <span className="text-base font-black text-rose-400 mt-1 block">₹{sipEnhancedResults.real_purchasing_power.toLocaleString("en-IN")}</span>
+                          </div>
+                        </div>
+
+                        {/* Compound Growth Area Chart */}
+                        <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
+                          <h4 className="font-bold text-slate-900 dark:text-white text-xs mb-3">SIP Wealth Roadmap Accumulation</h4>
+                          <div className="h-[220px] w-full">
+                            {isMounted && (
+                              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                <AreaChart data={sipEnhancedResults.schedule} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+                                  <defs>
+                                    <linearGradient id="colorInvested" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="5%" stopColor="#6366F1" stopOpacity={0.2}/>
+                                      <stop offset="95%" stopColor="#6366F1" stopOpacity={0.0}/>
+                                    </linearGradient>
+                                    <linearGradient id="colorMaturity" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.25}/>
+                                      <stop offset="95%" stopColor="#10B981" stopOpacity={0.0}/>
+                                    </linearGradient>
+                                  </defs>
+                                  <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
+                                  <XAxis dataKey="year" name="Year" stroke="#64748B" fontSize={8} tickFormatter={(y) => `Yr ${y}`} />
+                                  <YAxis stroke="#64748B" fontSize={8} tickFormatter={(v) => `₹${formatVolume(v)}`} />
+                                  <Tooltip formatter={(value: any) => `₹${Math.round(value).toLocaleString("en-IN")}`} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                  <Legend wrapperStyle={{ fontSize: 9 }} />
+                                  <Area type="monotone" dataKey="total_invested" stroke="#6366F1" strokeWidth={2} fillOpacity={1} fill="url(#colorInvested)" name="Total Principal Invested" />
+                                  <Area type="monotone" dataKey="future_value" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorMaturity)" name="Final Corpus Value" />
+                                </AreaChart>
+                              </ResponsiveContainer>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Goal roadmap notification */}
+                        {sipMode === "goal" && (
+                          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-xs text-slate-350 flex items-start space-x-2.5">
+                            <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                            <div>
+                              <p className="font-bold text-slate-800 dark:text-white">Goal Planning Recommendation</p>
+                              <p className="mt-1 leading-relaxed">
+                                To accumulate your target corpus of <b>₹{sipTargetAmount.toLocaleString("en-IN")}</b> in <b>{sipYears} years</b> (at <b>{sipReturn}% expected return</b> and <b>{sipStepUp}% annual step-up</b>), you need an initial monthly investment of <b className="text-emerald-400">₹{Math.round(sipEnhancedResults.monthly_investment).toLocaleString("en-IN")}</b>.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className={`flex flex-col items-center justify-center p-20 border border-dashed rounded-2xl text-slate-400 text-center space-y-3 ${themeClasses.card}`}>
+                        <Calculator className="h-10 w-10 text-slate-500" />
+                        <div>
+                          <h4 className="font-bold text-slate-800 dark:text-white text-sm">Wealth Projections</h4>
+                          <p className="text-2xs text-slate-400">Configure parameters on the left and click "Calculate Roadmap" to run quantitative projections.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 2. COMPARE SIPS */}
+              {activeFinanceTab === "compare_sip" && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Comparator Inputs */}
+                  <div className={`p-5 rounded-2xl border flex flex-col space-y-5 ${themeClasses.card}`}>
+                    <h4 className="font-bold text-slate-900 dark:text-white text-xs pb-2 border-b border-slate-200 dark:border-slate-800">Configure Comparisons</h4>
+                    
+                    {/* Setup A */}
+                    <div className="space-y-2.5">
+                      <span className="text-3xs text-indigo-400 font-extrabold uppercase tracking-wider block">SIP Configuration A</span>
+                      <div className="grid grid-cols-2 gap-2 text-3xs">
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-slate-400 font-semibold">Monthly SIP (₹)</label>
+                          <input type="number" value={compSipAmountA} onChange={(e) => setCompSipAmountA(Number(e.target.value))} className={`border rounded-lg px-2.5 py-1.5 ${themeClasses.input}`} />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-slate-400 font-semibold">Return (%)</label>
+                          <input type="number" value={compSipReturnA} onChange={(e) => setCompSipReturnA(Number(e.target.value))} className={`border rounded-lg px-2.5 py-1.5 ${themeClasses.input}`} />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-slate-400 font-semibold">Years</label>
+                          <input type="number" value={compSipYearsA} onChange={(e) => setCompSipYearsA(Number(e.target.value))} className={`border rounded-lg px-2.5 py-1.5 ${themeClasses.input}`} />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-slate-400 font-semibold">Step-up (%)</label>
+                          <input type="number" value={compSipStepUpA} onChange={(e) => setCompSipStepUpA(Number(e.target.value))} className={`border rounded-lg px-2.5 py-1.5 ${themeClasses.input}`} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <hr className="border-slate-800/80" />
+
+                    {/* Setup B */}
+                    <div className="space-y-2.5">
+                      <span className="text-3xs text-emerald-400 font-extrabold uppercase tracking-wider block">SIP Configuration B</span>
+                      <div className="grid grid-cols-2 gap-2 text-3xs">
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-slate-400 font-semibold">Monthly SIP (₹)</label>
+                          <input type="number" value={compSipAmountB} onChange={(e) => setCompSipAmountB(Number(e.target.value))} className={`border rounded-lg px-2.5 py-1.5 ${themeClasses.input}`} />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-slate-400 font-semibold">Return (%)</label>
+                          <input type="number" value={compSipReturnB} onChange={(e) => setCompSipReturnB(Number(e.target.value))} className={`border rounded-lg px-2.5 py-1.5 ${themeClasses.input}`} />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-slate-400 font-semibold">Years</label>
+                          <input type="number" value={compSipYearsB} onChange={(e) => setCompSipYearsB(Number(e.target.value))} className={`border rounded-lg px-2.5 py-1.5 ${themeClasses.input}`} />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-slate-400 font-semibold">Step-up (%)</label>
+                          <input type="number" value={compSipStepUpB} onChange={(e) => setCompSipStepUpB(Number(e.target.value))} className={`border rounded-lg px-2.5 py-1.5 ${themeClasses.input}`} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={runSipCompareCalc}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 rounded-xl transition-colors flex items-center justify-center space-x-1.5"
+                    >
+                      {sipCompareLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                      <span>Compare Allocations</span>
+                    </button>
+                  </div>
+
+                  {/* Comparator Charts & Grid */}
+                  <div className="lg:col-span-2 flex flex-col space-y-6">
+                    {sipCompareResults ? (
+                      <div className="space-y-6">
+                        {/* Side by side stats grid */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10 space-y-2 text-xs`}>
+                            <span className="text-3xs text-indigo-400 font-extrabold uppercase block border-b pb-1 border-slate-800">Portfolio A Maturity</span>
+                            <div className="flex justify-between text-2xs">
+                              <span className="text-slate-400">Total Invested:</span>
+                              <span className="font-semibold text-slate-800 dark:text-white">₹{sipCompareResults.sip_a.total_invested.toLocaleString("en-IN")}</span>
+                            </div>
+                            <div className="flex justify-between text-2xs">
+                              <span className="text-slate-400">Maturity Value:</span>
+                              <span className="font-black text-indigo-400">₹{sipCompareResults.sip_a.future_value.toLocaleString("en-IN")}</span>
+                            </div>
+                          </div>
+
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10 space-y-2 text-xs`}>
+                            <span className="text-3xs text-emerald-400 font-extrabold uppercase block border-b pb-1 border-slate-800">Portfolio B Maturity</span>
+                            <div className="flex justify-between text-2xs">
+                              <span className="text-slate-400">Total Invested:</span>
+                              <span className="font-semibold text-slate-800 dark:text-white">₹{sipCompareResults.sip_b.total_invested.toLocaleString("en-IN")}</span>
+                            </div>
+                            <div className="flex justify-between text-2xs">
+                              <span className="text-slate-400">Maturity Value:</span>
+                              <span className="font-black text-emerald-400">₹{sipCompareResults.sip_b.future_value.toLocaleString("en-IN")}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Comparative Growth Chart */}
+                        <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
+                          <h4 className="font-bold text-slate-900 dark:text-white text-xs mb-3">Maturity Comparison Curve</h4>
+                          <div className="h-[220px] w-full">
+                            {isMounted && (
+                              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                <LineChart margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
+                                  <XAxis dataKey="year" stroke="#64748B" fontSize={8} tickFormatter={(y) => `Yr ${y}`} />
+                                  <YAxis stroke="#64748B" fontSize={8} tickFormatter={(v) => `₹${formatVolume(v)}`} />
+                                  <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                  <Legend wrapperStyle={{ fontSize: 9 }} />
+                                  <Line type="monotone" data={sipCompareResults.sip_a.schedule} dataKey="future_value" stroke="#6366F1" strokeWidth={2} dot={false} name="Portfolio A" />
+                                  <Line type="monotone" data={sipCompareResults.sip_b.schedule} dataKey="future_value" stroke="#10B981" strokeWidth={2} dot={false} name="Portfolio B" />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`flex flex-col items-center justify-center p-20 border border-dashed rounded-2xl text-slate-400 text-center space-y-3 ${themeClasses.card}`}>
+                        <Calculator className="h-10 w-10 text-slate-500" />
+                        <div>
+                          <h4 className="font-bold text-slate-800 dark:text-white text-sm">Comparison Dashboard</h4>
+                          <p className="text-2xs text-slate-400">Configure parameters on the left and click "Compare Allocations" to run side-by-side growth comparisons.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. TAX & EXPENSES LEDGER */}
+              {activeFinanceTab === "tax_expense" && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Left Column: Tax Calculator */}
+                  <div className="lg:col-span-1 flex flex-col space-y-6">
+                    <div className={`p-5 rounded-2xl border flex flex-col space-y-4 ${themeClasses.card}`}>
+                      <h3 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800 flex items-center space-x-2">
+                        <DollarSign className="h-4 w-4 text-emerald-500" />
+                        <span>Capital Gains Tax Estimator</span>
+                      </h3>
+
+                      <div className="space-y-3 text-xs">
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Buy Value (₹)</label>
+                          <input 
+                            type="number" 
+                            value={taxBuy} 
+                            onChange={(e) => setTaxBuy(Number(e.target.value))}
+                            className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
+                          />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Sell Value (₹)</label>
+                          <input 
+                            type="number" 
+                            value={taxSell} 
+                            onChange={(e) => setTaxSell(Number(e.target.value))}
+                            className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
+                          />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Holding Period (Months)</label>
+                          <input 
+                            type="number" 
+                            value={taxMonths} 
+                            onChange={(e) => setTaxMonths(Number(e.target.value))}
+                            className={`border rounded-xl px-3 py-2 ${themeClasses.input}`}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={runTaxCalc}
+                        className="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs py-2 rounded-xl transition-colors"
+                      >
+                        Estimate Tax Liability
+                      </button>
+
+                      {taxResults && (
+                        <div className="bg-slate-50 dark:bg-[#0E1322]/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 space-y-2 text-xs">
+                          <div className="flex justify-between border-b pb-1.5 border-slate-100 dark:border-slate-900 text-2xs text-slate-400">
+                            <span>Gain Classification</span>
+                            <span className="text-slate-800 dark:text-white font-bold uppercase">{taxResults.gain_type}</span>
+                          </div>
+                          <div className="flex justify-between border-b pb-1.5 border-slate-100 dark:border-slate-900 text-2xs text-slate-400">
+                            <span>Total Capital Gain</span>
+                            <span className="text-emerald-500 font-semibold">₹{taxResults.capital_gain.toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className="flex justify-between border-b pb-1.5 border-slate-100 dark:border-slate-900 text-2xs text-slate-400">
+                            <span>Estimated Tax ({taxResults.tax_rate_pct}%)</span>
+                            <span className="text-rose-500 font-bold">₹{taxResults.tax_payable.toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className="flex justify-between text-2xs text-slate-400">
+                            <span>Net Gain (Post Tax)</span>
+                            <span className="text-indigo-500 font-bold">₹{taxResults.net_gain.toLocaleString("en-IN")}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Ledger Entry Form & Database */}
+                  <div className="lg:col-span-2 flex flex-col space-y-6">
+                    <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800">Add Ledger Entry</h4>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 text-xs">
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Amount (₹)</label>
+                          <input 
+                            type="number" 
+                            value={expenseAmount}
+                            onChange={(e) => setExpenseAmount(Number(e.target.value))}
+                            className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
+                          />
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Category</label>
+                          <select 
+                            value={expenseCategory}
+                            onChange={(e) => setExpenseCategory(e.target.value)}
+                            className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
+                          >
+                            <option value="Salary">Salary</option>
+                            <option value="Dividends">Dividends</option>
+                            <option value="Equity Investment">Equity Investment</option>
+                            <option value="Food & Living">Food & Living</option>
+                            <option value="Tax Payment">Tax Payment</option>
+                            <option value="Rent">Rent</option>
+                            <option value="Others">Others</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Type</label>
+                          <select 
+                            value={expenseType}
+                            onChange={(e) => setExpenseType(e.target.value as "Income" | "Expense")}
+                            className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
+                          >
+                            <option value="Income">Income</option>
+                            <option value="Expense">Expense</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col space-y-1">
+                          <label className="text-2xs text-slate-400 font-bold">Note</label>
+                          <input 
+                            type="text" 
+                            value={expenseDesc}
+                            onChange={(e) => setExpenseDesc(e.target.value)}
+                            placeholder="Salary credited"
+                            className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex justify-end">
                         <button
-                          onClick={() => deleteExpenseItem(item.id)}
-                          className="text-slate-400 hover:text-rose-500 p-1 transition-colors"
+                          onClick={addExpenseItem}
+                          className="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition-colors flex items-center space-x-1.5"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Plus className="h-4 w-4" />
+                          <span>Log Transaction</span>
                         </button>
                       </div>
                     </div>
-                  ))}
-                  {expensesList.length === 0 && (
-                    <div className="text-center py-8 text-slate-500 text-xs">No ledger entries logged yet.</div>
+
+                    {/* Transactions Ledger database */}
+                    <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800">Ledger Database</h4>
+                      
+                      <div className="mt-4 space-y-2.5 max-h-[350px] overflow-y-auto">
+                        {expensesList.map((item) => (
+                          <div key={item.id} className="bg-slate-50 dark:bg-[#0E1322]/40 p-3 md:p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex justify-between items-center gap-3 text-xs w-full min-w-0">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-bold text-slate-800 dark:text-white truncate">{item.category}</div>
+                              <div className="text-2xs text-slate-400 truncate">{item.description || "No description"}</div>
+                              <div className="text-3xs text-slate-500">{item.date}</div>
+                            </div>
+                            <div className="flex items-center space-x-3 md:space-x-6 shrink-0">
+                              <span className={`font-bold text-sm ${item.type === "Income" ? "text-emerald-500" : "text-rose-500"}`}>
+                                {item.type === "Income" ? "+" : "-"} ₹{item.amount.toLocaleString("en-IN")}
+                              </span>
+                              <button
+                                onClick={() => deleteExpenseItem(item.id)}
+                                className="text-slate-400 hover:text-rose-500 p-1 transition-colors"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {expensesList.length === 0 && (
+                          <div className="text-center py-8 text-slate-500 text-xs">No ledger entries logged yet.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 4. MUTUAL FUND ADVISOR */}
+              {activeFinanceTab === "mf" && (
+                <div className="space-y-6">
+                  {mfLoading ? (
+                    <div className="text-center py-20 text-slate-400 text-xs font-semibold">
+                      <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-indigo-500" />
+                      Analyzing risk-returns of mutual funds...
+                    </div>
+                  ) : mfData ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Curated list */}
+                      <div className="lg:col-span-1 flex flex-col space-y-4">
+                        <h4 className="font-bold text-slate-900 dark:text-white text-xs pb-2 border-b border-slate-200 dark:border-slate-800">Curated Category Leaders</h4>
+                        <div className="space-y-3">
+                          {mfData.funds.map((fund: any) => (
+                            <div key={fund.ticker} className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10 space-y-3 text-2xs`}>
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <span className="font-black text-slate-800 dark:text-white block truncate max-w-[160px] md:max-w-xs">{fund.long_name}</span>
+                                  <span className="text-indigo-400 font-extrabold text-[10px] mt-0.5">{fund.category}</span>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="font-black text-slate-800 dark:text-white text-xs block">₹{fund.nav.toFixed(2)}</span>
+                                  <span className="text-3xs text-slate-400">Current NAV</span>
+                                </div>
+                              </div>
+                              <hr className="border-slate-800/60" />
+                              <div className="grid grid-cols-3 gap-1.5 text-center text-3xs">
+                                <div>
+                                  <span className="text-slate-400 block uppercase font-bold">1Y Return</span>
+                                  <span className="font-bold text-emerald-500 text-[11px] mt-0.5 block">+{fund.return_1y.toFixed(1)}%</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block uppercase font-bold">Risk (Vol)</span>
+                                  <span className="font-bold text-rose-400 text-[11px] mt-0.5 block">{fund.volatility.toFixed(1)}%</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block uppercase font-bold">Sharpe</span>
+                                  <span className="font-bold text-indigo-400 text-[11px] mt-0.5 block">{fund.sharpe_ratio.toFixed(2)}</span>
+                                </div>
+                              </div>
+                              <div className="flex justify-between text-3xs text-slate-400 bg-slate-100 dark:bg-slate-950 p-2 border border-slate-200 dark:border-slate-850 rounded-lg">
+                                <span>AUM size: <b>₹{(fund.aum / 1e7).toFixed(1)} Cr</b></span>
+                                <span className="text-amber-400 font-bold">★ {fund.morningstar_rating}/5</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Cumulative Performance charts & Advisor notes */}
+                      <div className="lg:col-span-2 flex flex-col space-y-6">
+                        <div className={`p-4 rounded-xl border ${themeClasses.card} bg-white dark:bg-[#0E1322]/20`}>
+                          <h4 className="font-bold text-slate-800 dark:text-white text-xs mb-3">1-Year CAGR growth trajectory Comparison</h4>
+                          <div className="h-[240px] w-full">
+                            {isMounted && mfData.chart_data && mfData.chart_data.length > 0 && (
+                              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                <LineChart data={mfData.chart_data} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
+                                  <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
+                                  <YAxis unit="%" stroke="#64748B" fontSize={8} />
+                                  <Tooltip contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
+                                  <Legend wrapperStyle={{ fontSize: 9 }} />
+                                  <Line type="monotone" dataKey="Large Cap" stroke="#3B82F6" strokeWidth={1.5} dot={false} />
+                                  <Line type="monotone" dataKey="Mid Cap" stroke="#F59E0B" strokeWidth={1.5} dot={false} />
+                                  <Line type="monotone" dataKey="Small Cap" stroke="#EF4444" strokeWidth={1.5} dot={false} />
+                                  <Line type="monotone" dataKey="Flexi Cap" stroke="#8B5CF6" strokeWidth={1.5} dot={false} />
+                                  <Line type="monotone" dataKey="Hybrid" stroke="#10B981" strokeWidth={1.5} dot={false} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Advisor Risk assessment card */}
+                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-5 text-xs text-slate-350 space-y-3">
+                          <h5 className="font-bold text-slate-800 dark:text-white flex items-center space-x-2">
+                            <Cpu className="h-4.5 w-4.5 text-indigo-400" />
+                            <span>AI Quant Advisor Consensus</span>
+                          </h5>
+                          <p className="leading-relaxed">
+                            Based on live Morningstar ratings and Sharpe Ratio computations, the following allocations are recommended:
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-3xs pt-1.5 leading-relaxed text-slate-450">
+                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-lg">
+                              <span className="font-bold text-slate-850 dark:text-white uppercase block mb-1">Risk-Averse Investors</span>
+                              Mirae Asset Large Cap or ICICI Hybrid are recommended, offering a moderate volatility profile with strong Sharpe indicators (&gt; 1.2x).
+                            </div>
+                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-lg">
+                              <span className="font-bold text-slate-850 dark:text-white uppercase block mb-1">Growth Seekers</span>
+                              Nippon India Small Cap or HDFC Mid-Cap have yielded over 25% returns in the last 1 year, suitable for a 5+ year investment horizon.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-20 text-slate-500 text-xs">Awaiting mutual fund metrics payload.</div>
                   )}
                 </div>
-              </div>
-
+              )}
             </div>
-
           </div>
         )}
 

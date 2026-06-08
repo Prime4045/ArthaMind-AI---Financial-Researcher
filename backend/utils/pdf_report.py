@@ -93,7 +93,11 @@ def parse_markdown_to_story(text: str, story: list, styles, body_style: Paragrap
             if len(table_lines) >= 1:
                 # Parse headers
                 raw_headers = [c.strip() for c in table_lines[0].split("|")]
-                headers = raw_headers[1:-1] if len(raw_headers) > 2 else raw_headers
+                if len(raw_headers) > 0 and raw_headers[0] == "":
+                    raw_headers.pop(0)
+                if len(raw_headers) > 0 and raw_headers[-1] == "":
+                    raw_headers.pop(-1)
+                headers = raw_headers
                 
                 start_data_idx = 1
                 if len(table_lines) > 1 and "---" in table_lines[1]:
@@ -110,7 +114,11 @@ def parse_markdown_to_story(text: str, story: list, styles, body_style: Paragrap
                 # Add data rows
                 for r in range(start_data_idx, len(table_lines)):
                     raw_cells = [c.strip() for c in table_lines[r].split("|")]
-                    cells = raw_cells[1:-1] if len(raw_cells) > 2 else raw_cells
+                    if len(raw_cells) > 0 and raw_cells[0] == "":
+                        raw_cells.pop(0)
+                    if len(raw_cells) > 0 and raw_cells[-1] == "":
+                        raw_cells.pop(-1)
+                    cells = raw_cells
                     if len(cells) > 0:
                         data_row = []
                         for cell in cells:
