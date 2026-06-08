@@ -105,3 +105,29 @@ body {
 .animate-marquee:hover {
   animation-play-state: paused;
 }
+
+/* Global Contrast Enhancements for Light/Dark mode readability */
+div:not(.dark) .text-slate-400,
+div:not(.dark) .text-gray-400 {
+  color: #64748b !important; /* Boost text-slate-400 to slate-500 in light mode */
+}
+
+div:not(.dark) .text-slate-500,
+div:not(.dark) .text-gray-500 {
+  color: #475569 !important; /* Boost text-slate-500 to slate-600 in light mode */
+}
+
+.dark .text-slate-500,
+.dark .text-gray-500 {
+  color: #94a3b8 !important; /* Boost text-slate-500 to slate-400 in dark mode */
+}
+
+div:not(.dark) .border-slate-200 {
+  border-color: #cbd5e1 !important; /* slate-300 border for better visibility in light mode */
+}
+
+div:not(.dark) input,
+div:not(.dark) select,
+div:not(.dark) textarea {
+  color: #0f172a !important; /* slate-900 for input values in light mode */
+}

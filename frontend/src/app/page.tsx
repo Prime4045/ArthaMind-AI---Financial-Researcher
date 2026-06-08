@@ -1497,6 +1497,7 @@ export default function Dashboard() {
                     <div className="flex space-x-4 md:space-x-6 text-xs md:text-sm font-semibold overflow-x-auto scrollbar-none pb-1 flex-nowrap w-full">
                       {[
                         { id: "Overview", label: "Overview & Charts" },
+                        { id: "Comparator", label: "Stock Comparator" },
                         { id: "AI Research Hub", label: "AI Research Hub" },
                         { id: "Technical Metrics", label: "Technical Indicators" },
                         { id: "News Feed", label: "News Feed" }
@@ -1507,7 +1508,7 @@ export default function Dashboard() {
                           className={`transition-all pb-4 -mb-5 relative whitespace-nowrap cursor-pointer ${
                             activeWorkspaceTab === tab.id
                               ? "text-indigo-500 font-bold"
-                              : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                              : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                           }`}
                         >
                           {tab.label}
@@ -2853,20 +2854,20 @@ export default function Dashboard() {
                       <div className="space-y-6">
                         {/* Highlights Row */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10`}>
-                            <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Total Principal</span>
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30`}>
+                            <span className="text-3xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider block">Total Principal</span>
                             <span className="text-base font-black text-slate-800 dark:text-white mt-1 block">₹{sipEnhancedResults.total_invested.toLocaleString("en-IN")}</span>
                           </div>
-                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10`}>
-                            <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Wealth Gain</span>
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30`}>
+                            <span className="text-3xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider block">Wealth Gain</span>
                             <span className="text-base font-black text-emerald-500 mt-1 block">+₹{sipEnhancedResults.wealth_gain.toLocaleString("en-IN")}</span>
                           </div>
-                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10`}>
-                            <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Nominal Corpus</span>
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30`}>
+                            <span className="text-3xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider block">Nominal Corpus</span>
                             <span className="text-base font-black text-indigo-400 mt-1 block">₹{sipEnhancedResults.future_value.toLocaleString("en-IN")}</span>
                           </div>
-                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10`}>
-                            <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Real Purchasing Power</span>
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30`}>
+                            <span className="text-3xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider block">Real Purchasing Power</span>
                             <span className="text-base font-black text-rose-400 mt-1 block">₹{sipEnhancedResults.real_purchasing_power.toLocaleString("en-IN")}</span>
                           </div>
                         </div>
@@ -2997,27 +2998,27 @@ export default function Dashboard() {
                       <div className="space-y-6">
                         {/* Side by side stats grid */}
                         <div className="grid grid-cols-2 gap-4">
-                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10 space-y-2 text-xs`}>
-                            <span className="text-3xs text-indigo-400 font-extrabold uppercase block border-b pb-1 border-slate-800">Portfolio A Maturity</span>
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30 space-y-2 text-xs`}>
+                            <span className="text-3xs text-indigo-500 dark:text-indigo-400 font-extrabold uppercase block border-b pb-1 border-slate-200 dark:border-slate-800">Portfolio A Maturity</span>
                             <div className="flex justify-between text-2xs">
-                              <span className="text-slate-400">Total Invested:</span>
+                              <span className="text-slate-500 dark:text-slate-400">Total Invested:</span>
                               <span className="font-semibold text-slate-800 dark:text-white">₹{sipCompareResults.sip_a.total_invested.toLocaleString("en-IN")}</span>
                             </div>
                             <div className="flex justify-between text-2xs">
-                              <span className="text-slate-400">Maturity Value:</span>
-                              <span className="font-black text-indigo-400">₹{sipCompareResults.sip_a.future_value.toLocaleString("en-IN")}</span>
+                              <span className="text-slate-500 dark:text-slate-400">Maturity Value:</span>
+                              <span className="font-black text-indigo-500 dark:text-indigo-400">₹{sipCompareResults.sip_a.future_value.toLocaleString("en-IN")}</span>
                             </div>
                           </div>
 
-                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10 space-y-2 text-xs`}>
-                            <span className="text-3xs text-emerald-400 font-extrabold uppercase block border-b pb-1 border-slate-800">Portfolio B Maturity</span>
+                          <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30 space-y-2 text-xs`}>
+                            <span className="text-3xs text-emerald-500 dark:text-emerald-400 font-extrabold uppercase block border-b pb-1 border-slate-200 dark:border-slate-800">Portfolio B Maturity</span>
                             <div className="flex justify-between text-2xs">
-                              <span className="text-slate-400">Total Invested:</span>
+                              <span className="text-slate-500 dark:text-slate-400">Total Invested:</span>
                               <span className="font-semibold text-slate-800 dark:text-white">₹{sipCompareResults.sip_b.total_invested.toLocaleString("en-IN")}</span>
                             </div>
                             <div className="flex justify-between text-2xs">
-                              <span className="text-slate-400">Maturity Value:</span>
-                              <span className="font-black text-emerald-400">₹{sipCompareResults.sip_b.future_value.toLocaleString("en-IN")}</span>
+                              <span className="text-slate-500 dark:text-slate-400">Maturity Value:</span>
+                              <span className="font-black text-emerald-500 dark:text-emerald-400">₹{sipCompareResults.sip_b.future_value.toLocaleString("en-IN")}</span>
                             </div>
                           </div>
                         </div>
@@ -3240,35 +3241,35 @@ export default function Dashboard() {
                         <h4 className="font-bold text-slate-900 dark:text-white text-xs pb-2 border-b border-slate-200 dark:border-slate-800">Curated Category Leaders</h4>
                         <div className="space-y-3">
                           {mfData.funds.map((fund: any) => (
-                            <div key={fund.ticker} className={`p-4 rounded-xl border ${themeClasses.card} bg-[#0E1322]/10 space-y-3 text-2xs`}>
+                            <div key={fund.ticker} className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30 space-y-3 text-2xs`}>
                               <div className="flex justify-between items-start">
                                 <div>
                                   <span className="font-black text-slate-800 dark:text-white block truncate max-w-[160px] md:max-w-xs">{fund.long_name}</span>
-                                  <span className="text-indigo-400 font-extrabold text-[10px] mt-0.5">{fund.category}</span>
+                                  <span className="text-indigo-600 dark:text-indigo-400 font-extrabold text-[10px] mt-0.5">{fund.category}</span>
                                 </div>
                                 <div className="text-right shrink-0">
                                   <span className="font-black text-slate-800 dark:text-white text-xs block">₹{fund.nav.toFixed(2)}</span>
-                                  <span className="text-3xs text-slate-400">Current NAV</span>
+                                  <span className="text-3xs text-slate-500 dark:text-slate-400">Current NAV</span>
                                 </div>
                               </div>
-                              <hr className="border-slate-800/60" />
+                              <hr className="border-slate-200 dark:border-slate-800/60" />
                               <div className="grid grid-cols-3 gap-1.5 text-center text-3xs">
                                 <div>
-                                  <span className="text-slate-400 block uppercase font-bold">1Y Return</span>
+                                  <span className="text-slate-500 dark:text-slate-400 block uppercase font-bold">1Y Return</span>
                                   <span className="font-bold text-emerald-500 text-[11px] mt-0.5 block">+{fund.return_1y.toFixed(1)}%</span>
                                 </div>
                                 <div>
-                                  <span className="text-slate-400 block uppercase font-bold">Risk (Vol)</span>
-                                  <span className="font-bold text-rose-400 text-[11px] mt-0.5 block">{fund.volatility.toFixed(1)}%</span>
+                                  <span className="text-slate-500 dark:text-slate-400 block uppercase font-bold">Risk (Vol)</span>
+                                  <span className="font-bold text-rose-450 dark:text-rose-400 text-[11px] mt-0.5 block">{fund.volatility.toFixed(1)}%</span>
                                 </div>
                                 <div>
-                                  <span className="text-slate-400 block uppercase font-bold">Sharpe</span>
-                                  <span className="font-bold text-indigo-400 text-[11px] mt-0.5 block">{fund.sharpe_ratio.toFixed(2)}</span>
+                                  <span className="text-slate-500 dark:text-slate-400 block uppercase font-bold">Sharpe</span>
+                                  <span className="font-bold text-indigo-500 dark:text-indigo-400 text-[11px] mt-0.5 block">{fund.sharpe_ratio.toFixed(2)}</span>
                                 </div>
                               </div>
-                              <div className="flex justify-between text-3xs text-slate-400 bg-slate-100 dark:bg-slate-950 p-2 border border-slate-200 dark:border-slate-850 rounded-lg">
+                              <div className="flex justify-between text-3xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 p-2 border border-slate-200 dark:border-slate-850 rounded-lg">
                                 <span>AUM size: <b>₹{(fund.aum / 1e7).toFixed(1)} Cr</b></span>
-                                <span className="text-amber-400 font-bold">★ {fund.morningstar_rating}/5</span>
+                                <span className="text-amber-500 dark:text-amber-400 font-bold">★ {fund.morningstar_rating}/5</span>
                               </div>
                             </div>
                           ))}

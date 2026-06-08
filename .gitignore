@@ -39,3 +39,4 @@ yarn-error.log*
 *.pkl
 *.pages
 *.pdf
+.vscode
