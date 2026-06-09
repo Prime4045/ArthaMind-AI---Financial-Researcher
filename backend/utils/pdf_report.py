@@ -6,9 +6,30 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
+def sanitize_latin1(text: str) -> str:
+    if not text:
+        return ""
+    # Standard replacements for common non-latin1 characters
+    text = text.replace("₹", "Rs. ")
+    text = text.replace("▲", "(Up) ")
+    text = text.replace("▼", "(Down) ")
+    text = text.replace("“", '"').replace("”", '"')
+    text = text.replace("‘", "'").replace("’", "'")
+    text = text.replace("—", "-")
+    
+    # Safe encoding fallback to prevent any uncaught unicode character from raising UnicodeEncodeError
+    try:
+        encoded = text.encode("latin-1", errors="replace")
+        return encoded.decode("latin-1")
+    except Exception:
+        return text
+
 def parse_inline_markdown_to_html(text: str) -> str:
     if not text:
         return ""
+    
+    # Sanitize to prevent ReportLab crashes
+    text = sanitize_latin1(text)
     
     # Escape XML characters that break ReportLab's XML parser
     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -19,7 +40,7 @@ def parse_inline_markdown_to_html(text: str) -> str:
     
     # Replace italic (*italic* and _italic_) with <i>italic</i>
     text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)
-    text = re.sub(r'_(.*?)_', r'<i>\1</i>', text)
+    text = re.sub(r'(?<![a-zA-Z0-9_])_(?![_\s])(.*?)(?<![_\s])_(?![a-zA-Z0-9_])', r'<i>\1</i>', text)
     
     # Replace code (`code`) with font tags
     text = re.sub(r'`(.*?)`', r'<font face="Courier" color="#4F46E5"><b>\1</b></font>', text)
