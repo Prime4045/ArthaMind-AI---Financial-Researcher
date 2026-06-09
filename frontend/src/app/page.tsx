@@ -1120,12 +1120,12 @@ export default function Dashboard() {
   // Color configurations based on theme
   const themeClasses = {
     bg: theme === "light" ? "bg-slate-50" : "bg-[#070A13]",
-    card: theme === "light" ? "bg-white border-2 border-slate-900 text-slate-900 shadow-lg rounded-2xl" : "glass-card border border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
-    textMuted: theme === "light" ? "text-slate-700 font-medium" : "text-slate-400",
-    textTitle: theme === "light" ? "text-slate-900 font-extrabold" : "text-white",
-    input: theme === "light" ? "bg-white border-2 border-slate-900 text-slate-900 placeholder-slate-500" : "bg-[#0E1322] border border-slate-800 text-slate-100",
-    border: theme === "light" ? "border-2 border-slate-900" : "border border-slate-800/70",
-    tableRowEven: theme === "light" ? "bg-slate-100 border-b border-slate-200" : "bg-[#0E1322]/40"
+    card: theme === "light" ? "bg-white border border-slate-200 text-slate-900 shadow-sm rounded-2xl" : "glass-card border border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
+    textMuted: theme === "light" ? "text-slate-500 font-medium" : "text-slate-400",
+    textTitle: theme === "light" ? "text-slate-900 font-bold" : "text-white",
+    input: theme === "light" ? "bg-white border border-slate-200 text-slate-900 placeholder-slate-400" : "bg-[#0E1322] border border-slate-800 text-slate-100",
+    border: theme === "light" ? "border border-slate-200" : "border border-slate-800/70",
+    tableRowEven: theme === "light" ? "bg-slate-50 border-b border-slate-100" : "bg-[#0E1322]/40"
   };
 
   return (
@@ -1455,32 +1455,32 @@ export default function Dashboard() {
                </div>
  
                {/* Bottom Row: Key Metrics Grid */}
-               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4 text-xs">
-                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                   <div className="text-slate-400 font-bold uppercase text-3xs">Today's High</div>
-                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.high.toFixed(2)}</div>
-                 </div>
-                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                   <div className="text-slate-400 font-bold uppercase text-3xs">Today's Low</div>
-                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.low.toFixed(2)}</div>
-                 </div>
-                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                   <div className="text-slate-400 font-bold uppercase text-3xs">Open Price</div>
-                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.open.toFixed(2)}</div>
-                 </div>
-                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                   <div className="text-slate-400 font-bold uppercase text-3xs">Prev. Close</div>
-                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currencySymbol}{currentStock.close.toFixed(2)}</div>
-                 </div>
-                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                   <div className="text-slate-400 font-bold uppercase text-3xs">Volume</div>
-                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currentStock.volume}</div>
-                 </div>
-                 <div className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-                   <div className="text-slate-400 font-bold uppercase text-3xs">Market Cap</div>
-                   <div className="font-bold text-sm text-slate-700 dark:text-slate-200 mt-0.5">{currentStock.cap}</div>
-                 </div>
-               </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4 text-xs">
+                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                    <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Today's High</div>
+                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currencySymbol}{currentStock.high.toFixed(2)}</div>
+                  </div>
+                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                    <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Today's Low</div>
+                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currencySymbol}{currentStock.low.toFixed(2)}</div>
+                  </div>
+                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                    <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Open Price</div>
+                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currencySymbol}{currentStock.open.toFixed(2)}</div>
+                  </div>
+                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                    <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Prev. Close</div>
+                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currencySymbol}{currentStock.close.toFixed(2)}</div>
+                  </div>
+                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                    <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Volume</div>
+                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currentStock.volume}</div>
+                  </div>
+                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                    <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Market Cap</div>
+                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currentStock.cap}</div>
+                  </div>
+                </div>
              </div>
             
             {/* Split layout: Chart & Details vs AI predictions */}
@@ -1663,7 +1663,7 @@ export default function Dashboard() {
                           </div>
                           
                           {/* Dynamic metadata row */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs bg-slate-50 dark:bg-slate-900/40 p-4 border border-slate-200 dark:border-slate-800/70 rounded-xl">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs bg-slate-100/40 dark:bg-[#0E1322]/40 p-4 rounded-xl">
                             <div>
                               <span className="text-slate-400 font-bold block uppercase text-3xs mb-0.5">Sector</span>
                               <span className="font-semibold text-slate-800 dark:text-slate-200">{currentStock.sector}</span>
@@ -2425,7 +2425,7 @@ export default function Dashboard() {
                       <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Active Signal Triggers</span>
                       <div className="space-y-2.5 max-h-[170px] overflow-y-auto pr-1">
                         {aiRecommendation.signals.map((sig: any, idx: number) => (
-                          <div key={idx} className="bg-slate-50/50 dark:bg-[#0E1322]/40 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800/50 space-y-1">
+                          <div key={idx} className="bg-slate-100/40 dark:bg-[#0E1322]/55 p-2.5 rounded-xl space-y-1">
                             <div className="flex justify-between items-center text-3xs">
                               <span className="font-bold text-slate-700 dark:text-slate-300">{sig.name}</span>
                               <span className={`px-2 py-0.5 rounded-full text-4xs font-black uppercase ${
@@ -2446,7 +2446,7 @@ export default function Dashboard() {
                     </h4>
 
                     {/* Forecast horizon Tabs */}
-                    <div className="flex space-x-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-lg border mb-4 border-slate-200 dark:border-slate-800">
+                    <div className="flex space-x-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-lg mb-4">
                       {["Tomorrow", "Next 7 Days", "Next 30 Days"].map((horizon, idx) => {
                         const hKey = idx === 0 ? "tomorrow" : idx === 1 ? "7days" : "30days";
                         const isActive = predictionHorizon === hKey;
@@ -2454,7 +2454,7 @@ export default function Dashboard() {
                           <button
                             key={horizon}
                             onClick={() => setPredictionHorizon(hKey)}
-                            className={`flex-1 py-1 rounded text-3xs font-bold transition-all ${isActive ? "bg-white dark:bg-[#131B31] text-emerald-500 border" : "text-slate-400 hover:text-slate-600"}`}
+                            className={`flex-1 py-1 rounded text-3xs font-bold transition-all ${isActive ? "bg-white dark:bg-[#131B31] text-emerald-500 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
                           >
                             {horizon}
                           </button>
@@ -2747,16 +2747,16 @@ export default function Dashboard() {
                   <div className={`p-5 rounded-2xl border flex flex-col space-y-4 ${themeClasses.card}`}>
                     <h4 className="font-bold text-slate-900 dark:text-white text-xs pb-2 border-b border-slate-200 dark:border-slate-800">SIP Investment Inputs</h4>
                     
-                    <div className="flex space-x-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-lg border border-slate-200 dark:border-slate-800 mb-2">
+                    <div className="flex space-x-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-lg mb-2">
                       <button 
                         onClick={() => setSipMode("investment")}
-                        className={`flex-1 py-1 rounded text-3xs font-bold transition-all ${sipMode === "investment" ? "bg-white dark:bg-[#131B31] text-indigo-500 border" : "text-slate-400"}`}
+                        className={`flex-1 py-1 rounded text-3xs font-bold transition-all ${sipMode === "investment" ? "bg-white dark:bg-[#131B31] text-indigo-500 shadow-sm" : "text-slate-400"}`}
                       >
                         Wealth Growth
                       </button>
                       <button 
                         onClick={() => setSipMode("goal")}
-                        className={`flex-1 py-1 rounded text-3xs font-bold transition-all ${sipMode === "goal" ? "bg-white dark:bg-[#131B31] text-indigo-500 border" : "text-slate-400"}`}
+                        className={`flex-1 py-1 rounded text-3xs font-bold transition-all ${sipMode === "goal" ? "bg-white dark:bg-[#131B31] text-indigo-500 shadow-sm" : "text-slate-400"}`}
                       >
                         Target Goal
                       </button>
