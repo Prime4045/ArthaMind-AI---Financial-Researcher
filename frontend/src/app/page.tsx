@@ -1876,7 +1876,7 @@ export default function Dashboard() {
                             </div>
 
                             {/* Active report details */}
-                            <div className="flex-1 overflow-y-auto pr-1 text-2xs leading-relaxed text-slate-500 dark:text-slate-400">
+                            <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4 pr-1 text-2xs leading-relaxed text-slate-500 dark:text-slate-400">
                               {selectedAnalystReport === "tech" && (
                                 <div className="space-y-1">
                                   {technicalReport ? renderMarkdown(technicalReport) : <div className="text-center py-24 text-slate-500">Technical Analyst Node results will compile here.</div>}
