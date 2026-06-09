@@ -78,6 +78,22 @@ class StockHistoryCache(Base):
     history_json = Column(String)  # JSON serialized list of dicts
     last_updated = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
+class ResearchReportCache(Base):
+    """
+    Caches the final compiled multi-agent reports (technical, fundamental, sentiment, pf, master)
+    to prevent slow repeated LLM calls on the same day.
+    """
+    __tablename__ = "research_report_cache"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, unique=True, index=True)
+    technical = Column(String)
+    fundamental = Column(String)
+    sentiment = Column(String)
+    personal_finance = Column(String)
+    master_report = Column(String)
+    last_updated = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
 def init_db():
     """
     Creates all database tables

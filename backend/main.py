@@ -109,7 +109,7 @@ class SIPCompareRequest(BaseModel):
 
 # Import Database & Core Modules
 from backend.db.session import get_db, SessionLocal
-from backend.db.models import init_db, StockCache, Watchlist, Expense, OptimizedPortfolio, StockInfoCache, StockHistoryCache
+from backend.db.models import init_db, StockCache, Watchlist, Expense, OptimizedPortfolio, StockInfoCache, StockHistoryCache, ResearchReportCache
 from backend.data.fetcher import fetch_stock_data, DEFAULT_TICKERS
 from backend.data.indicators import calculate_technical_indicators
 from backend.data.optimizer import optimize_portfolio
@@ -1341,7 +1341,7 @@ def delete_expense(item_id: int, db: Session = Depends(get_db)):
 # ==================== AGENT WORKFLOW & SSE STREAMING ====================
 
 @app.get("/api/stock/{ticker}/research/stream")
-def stream_research(ticker: str):
+def stream_research(ticker: str, db: Session = Depends(get_db)):
     """
     Server-Sent Events (SSE) streaming endpoint that runs the multi-agent graph
     and streams back log events and final outputs in real-time.
@@ -1350,7 +1350,7 @@ def stream_research(ticker: str):
     
     def event_generator():
         # Iterate over the graph state changes
-        for event in run_agent_graph_stream(ticker):
+        for event in run_agent_graph_stream(ticker, db=db):
             # yield matching EventSource syntax
             yield f"data: {json.dumps(event)}\n\n"
             

@@ -21,18 +21,71 @@ class FinancialResearchState:
         logger.info(message)
         self.logs.append(message)
 
-def run_agent_graph_stream(ticker: str) -> Generator[Dict[str, Any], None, None]:
+def run_agent_graph_stream(ticker: str, db: Any = None) -> Generator[Dict[str, Any], None, None]:
     """
     Runs the multi-agent graph and yields the execution state of the graph
     at each node transition. Enables real-time tracing in the UI.
+    Optimised using concurrent.futures.as_completed (DSA) and ResearchReportCache.
     """
     import concurrent.futures
+    from datetime import datetime, timedelta
+    from backend.db.session import SessionLocal
+    from backend.db.models import ResearchReportCache
+    
+    own_db = False
+    if db is None:
+        db = SessionLocal()
+        own_db = True
+        
+    ticker = ticker.strip().upper()
     state = FinancialResearchState(ticker)
     
+    # 1. DSA Memoization Check: Check cache to see if report was generated in last 12 hours
+    cached_report = None
+    try:
+        cached_report = db.query(ResearchReportCache).filter(ResearchReportCache.ticker == ticker).first()
+    except Exception as cache_err:
+        logger.error(f"Error querying research report cache: {cache_err}")
+        
+    is_cache_valid = False
+    if cached_report:
+        try:
+            last_updated_dt = datetime.strptime(cached_report.last_updated, "%Y-%m-%d %H:%M:%S")
+            # Valid for 12 hours to capture daily market cycles
+            if (datetime.now() - last_updated_dt) < timedelta(hours=12):
+                is_cache_valid = True
+        except Exception as parse_err:
+            logger.warning(f"Error parsing research report cache timestamp: {parse_err}")
+            
+    if is_cache_valid and cached_report:
+        state.add_log(f"Initializing Research Team for {ticker}...")
+        yield {"status": "loading_data", "logs": state.logs, "state": state.__dict__}
+        
+        state.add_log("Loading cached research report from database (Instant Cache-Hit)...")
+        yield {"status": "data_loaded", "logs": state.logs, "state": state.__dict__}
+        
+        state.technical = cached_report.technical
+        state.fundamental = cached_report.fundamental
+        state.sentiment = cached_report.sentiment
+        state.personal_finance = cached_report.personal_finance
+        state.master_report = cached_report.master_report
+        
+        state.add_log("Technical Analyst Agent report loaded from cache.")
+        state.add_log("Fundamental Analyst Agent report loaded from cache.")
+        state.add_log("News Sentiment Analyst Agent report loaded from cache.")
+        state.add_log("Personal Finance Advisor Agent report loaded from cache.")
+        state.add_log("Lead Research Specialist Agent master report loaded from cache.")
+        state.add_log("Master Research Report successfully finalized.")
+        
+        yield {"status": "completed", "logs": state.logs, "state": state.__dict__}
+        if own_db:
+            db.close()
+        return
+
+    # Node 1: Preload Data
     state.add_log(f"Initializing Research Team for {ticker}...")
     yield {"status": "loading_data", "logs": state.logs, "state": state.__dict__}
     
-    # Node 1: Preload Data
     team = StockResearchTeam(ticker)
     try:
         team.load_data()
@@ -45,7 +98,7 @@ def run_agent_graph_stream(ticker: str) -> Generator[Dict[str, Any], None, None]
     # Start all analyst executions concurrently
     state.add_log("Starting parallel execution of research analyst agents (Technical, Fundamental, Sentiment, Personal Finance)...")
     
-    # Node 2: Technical Analyst
+    # Yield initial progress
     yield {"status": "running_technical", "logs": state.logs, "state": state.__dict__}
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
@@ -54,57 +107,66 @@ def run_agent_graph_stream(ticker: str) -> Generator[Dict[str, Any], None, None]
         future_sent = executor.submit(team.run_news_sentiment_analyst)
         future_pf = executor.submit(team.run_personal_finance_advisor)
         
-        # 1. Technical Analyst
-        try:
-            state.technical = future_tech.result()
-            state.add_log("Technical Analyst Agent finished report generation.")
-        except Exception as e:
-            logger.error(f"Technical Analyst Agent crashed: {e}")
-            state.technical = f"Technical Analyst Error: {str(e)}"
-            state.add_log(f"⚠️ Technical Analyst Agent failed: {str(e)}")
-        yield {"status": "technical_done", "logs": state.logs, "state": state.__dict__}
+        future_to_agent = {
+            future_tech: ("technical", "Technical Analyst Agent"),
+            future_fund: ("fundamental", "Fundamental Analyst Agent"),
+            future_sent: ("sentiment", "News Sentiment Analyst Agent"),
+            future_pf: ("personal_finance", "Personal Finance Advisor Agent")
+        }
         
-        # 2. Fundamental Analyst
-        state.add_log("Fundamental Analyst Agent is reviewing valuation multiples and balance sheet strength...")
-        yield {"status": "running_fundamental", "logs": state.logs, "state": state.__dict__}
-        try:
-            state.fundamental = future_fund.result()
-            state.add_log("Fundamental Analyst Agent finished report generation.")
-        except Exception as e:
-            logger.error(f"Fundamental Analyst Agent crashed: {e}")
-            state.fundamental = f"Fundamental Analyst Error: {str(e)}"
-            state.add_log(f"⚠️ Fundamental Analyst Agent failed: {str(e)}")
-        yield {"status": "fundamental_done", "logs": state.logs, "state": state.__dict__}
-        
-        # 3. News & Sentiment Analyst
-        state.add_log("News Sentiment Analyst Agent is evaluating news headlines and market mood...")
-        yield {"status": "running_sentiment", "logs": state.logs, "state": state.__dict__}
-        try:
-            state.sentiment = future_sent.result()
-            state.add_log("News Sentiment Analyst Agent finished report generation.")
-        except Exception as e:
-            logger.error(f"News Sentiment Analyst Agent crashed: {e}")
-            state.sentiment = f"News Sentiment Analyst Error: {str(e)}"
-            state.add_log(f"⚠️ News Sentiment Analyst Agent failed: {str(e)}")
-        yield {"status": "sentiment_done", "logs": state.logs, "state": state.__dict__}
-        
-        # 4. Personal Finance Advisor
-        state.add_log("Personal Finance Advisor Agent is running SIP simulations and capital gains tax calculations...")
-        yield {"status": "running_personal_finance", "logs": state.logs, "state": state.__dict__}
-        try:
-            state.personal_finance = future_pf.result()
-            state.add_log("Personal Finance Advisor Agent finished report generation.")
-        except Exception as e:
-            logger.error(f"Personal Finance Advisor Agent crashed: {e}")
-            state.personal_finance = f"Personal Finance Advisor Error: {str(e)}"
-            state.add_log(f"⚠️ Personal Finance Advisor Agent failed: {str(e)}")
-        yield {"status": "personal_finance_done", "logs": state.logs, "state": state.__dict__}
-        
+        # DSA Concurrency Optimization: Stream updates as soon as any agent thread completes
+        for future in concurrent.futures.as_completed(future_to_agent):
+            attr, agent_name = future_to_agent[future]
+            try:
+                result = future.result()
+                setattr(state, attr, result)
+                state.add_log(f"{agent_name} finished report generation.")
+            except Exception as e:
+                logger.error(f"{agent_name} crashed: {e}")
+                setattr(state, attr, f"{agent_name} Error: {str(e)}")
+                state.add_log(f"⚠️ {agent_name} failed: {str(e)}")
+            yield {"status": f"{attr}_done", "logs": state.logs, "state": state.__dict__}
+            
     # Node 6: Consolidator / Lead Research Specialist
     state.add_log("Lead Research Specialist Agent is compiling final memorandum and SEBI disclaimers...")
     yield {"status": "running_consolidator", "logs": state.logs, "state": state.__dict__}
-    state.master_report = team.run_consolidator(
-        state.technical, state.fundamental, state.sentiment, state.personal_finance
-    )
-    state.add_log("Master Research Report successfully compiled and finalized.")
+    try:
+        state.master_report = team.run_consolidator(
+            state.technical, state.fundamental, state.sentiment, state.personal_finance
+        )
+        state.add_log("Master Research Report successfully compiled and finalized.")
+    except Exception as e:
+        logger.error(f"Lead Research Specialist crashed: {e}")
+        state.master_report = f"Lead Research Specialist Error: {str(e)}"
+        state.add_log(f"⚠️ Lead Research Specialist failed: {str(e)}")
+        
+    # Write report results to cache for future daily cache-hits
+    try:
+        existing = db.query(ResearchReportCache).filter(ResearchReportCache.ticker == ticker).first()
+        if existing:
+            existing.technical = state.technical
+            existing.fundamental = state.fundamental
+            existing.sentiment = state.sentiment
+            existing.personal_finance = state.personal_finance
+            existing.master_report = state.master_report
+            existing.last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            new_cache = ResearchReportCache(
+                ticker=ticker,
+                technical=state.technical,
+                fundamental=state.fundamental,
+                sentiment=state.sentiment,
+                personal_finance=state.personal_finance,
+                master_report=state.master_report,
+                last_updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            )
+            db.add(new_cache)
+        db.commit()
+    except Exception as save_err:
+        logger.error(f"Error saving report to cache: {save_err}")
+        db.rollback()
+        
     yield {"status": "completed", "logs": state.logs, "state": state.__dict__}
+    
+    if own_db:
+        db.close()
