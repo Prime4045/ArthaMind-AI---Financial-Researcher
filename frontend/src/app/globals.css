@@ -1,8 +1,26 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #070a13;
+  --foreground: #f8fafc;
+  
+  /* Color System Tokens for Dark Mode */
+  --bg-primary: #0b0f19;
+  --bg-secondary: #070a13;
+  --bg-surface: #0e1322;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  
+  --accent-blue: #3b82f6;
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+  --accent-violet: #8b5cf6;
+  --border-light: #1e293b;
+  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.4);
   
   /* Responsive typography tokens */
   --text-2xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.8125rem);    /* 12px on mobile -> 13px on desktop */
@@ -161,7 +179,7 @@ html:not(.dark) .glass-card:hover {
 
 /* Parent sections cards styling */
 html:not(.dark) .parent-card {
-  border: 1px solid #1a1a1a !important; /* solid black border as requested for light theme */
+  border: 1px solid var(--border-light) !important;
   box-shadow: var(--shadow-soft) !important;
 }
 
@@ -169,6 +187,10 @@ html:not(.dark) .parent-card {
 html:not(.dark) .card-header-gradient {
   background: linear-gradient(to bottom, #f9fafb, #e9edf5) !important;
   border-bottom: 1px solid var(--border-light) !important;
+}
+.dark .card-header-gradient {
+  background: linear-gradient(to bottom, #111827, #0B0F19) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
 /* Clean, Translucent White Glassmorphism Header */
@@ -180,18 +202,13 @@ html:not(.dark) header {
   color: var(--text-primary) !important;
 }
 
-html:not(.dark) header span:not(.text-indigo-400),
-html:not(.dark) header svg:not(.text-amber-400):not(.text-indigo-600),
-html:not(.dark) header nav button:not(.bg-indigo-600) {
-  color: var(--text-primary) !important;
-}
 
-/* Watchlist Bar Light Gradient with hover glow */
+/* Watchlist Bar Translucent White with hover glow */
 html:not(.dark) .watchlist-container {
-  background: linear-gradient(to right, #f5f7fa, #e9edf5) !important;
+  background: rgba(255, 255, 255, 0.8) !important;
   border: 1px solid var(--border-light) !important;
   backdrop-filter: blur(12px) !important;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+  box-shadow: var(--shadow-soft) !important;
 }
 
 html:not(.dark) .watchlist-pill {
@@ -203,7 +220,7 @@ html:not(.dark) .watchlist-pill {
 
 html:not(.dark) .watchlist-pill:hover {
   border-color: var(--accent-blue) !important;
-  box-shadow: 0 0 6px rgba(0, 122, 255, 0.25) !important;
+  box-shadow: 0 0 10px rgba(0, 122, 255, 0.2) !important;
   transform: translateY(-1px) !important;
 }
 
@@ -299,11 +316,6 @@ html:not(.dark) .text-black-heading {
   font-weight: 700 !important;
 }
 
-html:not(.dark) p,
-html:not(.dark) span:not(.text-emerald-500):not(.text-rose-500):not(.text-indigo-400):not(.text-blue-400):not(.text-emerald-600):not(.text-rose-600):not(.text-amber-500):not(.text-amber-600):not(.text-indigo-500):not(.text-blue-600):not(.text-indigo-600),
-html:not(.dark) td {
-  color: var(--text-secondary) !important;
-}
 
 /* Monospace metrics variant */
 html:not(.dark) .numeric-monospace {
@@ -351,10 +363,6 @@ html:not(.dark) footer {
   border-top: 1px solid var(--border-light) !important;
 }
 
-html:not(.dark) footer p,
-html:not(.dark) footer b {
-  color: var(--text-muted) !important;
-}
 
 /* Horizontal scroll bar layout bugs fix for tab selectors */
 .responsive-tabs-container {
@@ -392,6 +400,70 @@ html:not(.dark) .consensus-box {
   background-color: var(--bg-surface) !important;
   border: 1px solid var(--border-light) !important;
 }
-html:not(.dark) .consensus-box *:not(.text-blue-600):not(.text-emerald-600):not(.text-rose-600):not(.text-amber-600):not(.text-indigo-600) {
+
+/* --- Fix top tabs --- */
+html:not(.dark) .nav-tab {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid var(--border-light) !important;
   color: var(--text-primary) !important;
+  box-shadow: var(--shadow-soft) !important;
+  transition: all 0.2s ease-in-out !important;
 }
+html:not(.dark) .nav-tab:hover {
+  background: var(--accent-blue) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25) !important;
+}
+
+/* --- Step containers --- */
+html:not(.dark) .step-card {
+  background: linear-gradient(to bottom, #ffffff, #f5f7fa) !important;
+  border: 1px solid var(--border-light) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-soft) !important;
+  transition: all 0.2s ease-in-out !important;
+}
+html:not(.dark) .step-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: var(--shadow-hover) !important;
+}
+/* Accent borders and icon glow for step-cards in light theme */
+html:not(.dark) .step-card:nth-child(1) {
+  border-left: 3px solid var(--accent-blue) !important;
+}
+html:not(.dark) .step-card:nth-child(2) {
+  border-left: 3px solid var(--accent-violet) !important;
+}
+html:not(.dark) .step-card:nth-child(3) {
+  border-left: 3px solid var(--accent-green) !important;
+}
+html:not(.dark) .step-card:nth-child(1) .shrink-0 {
+  box-shadow: 0 0 12px rgba(0, 122, 255, 0.15) !important;
+}
+html:not(.dark) .step-card:nth-child(2) .shrink-0 {
+  box-shadow: 0 0 12px rgba(110, 86, 207, 0.15) !important;
+}
+html:not(.dark) .step-card:nth-child(3) .shrink-0 {
+  box-shadow: 0 0 12px rgba(0, 200, 83, 0.15) !important;
+}
+
+/* --- Stock info boxes --- */
+html:not(.dark) .metric-box {
+  background: #ffffff !important;
+  border: 1px solid var(--border-light) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--shadow-soft) !important;
+  transition: all 0.2s ease-in-out !important;
+}
+html:not(.dark) .metric-box:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: var(--shadow-hover) !important;
+}
+
+/* --- Scrolling ticker marquee bar --- */
+html:not(.dark) .marquee-container {
+  background: linear-gradient(to right, #f7f9fc, #e9edf5) !important;
+  border-top: 1px solid var(--border-light) !important;
+  border-bottom: 1px solid var(--border-light) !important;
+}
+

@@ -223,8 +223,8 @@ export default function Dashboard() {
   // On Vercel, the vercel.json routes handle /api/* -> backend/main.py
   const BACKEND_URL = "";
 
-  // Theme state: 'light' or 'dark'. Default is 'dark' for premium fintech experience.
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  // Theme state: 'light' or 'dark'. Default is 'light' for crisp, accessible trading dashboard.
+  const [theme, setTheme] = useState<"light" | "dark">("light");
 
   // Backend connection state (true = online, false = offline, null = checking)
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
@@ -1129,7 +1129,7 @@ export default function Dashboard() {
   // Color configurations based on theme
   const themeClasses = {
     bg: theme === "light" ? "bg-[#FAFBFD]" : "bg-[#070A13]",
-    card: theme === "light" ? "bg-white border border-black text-[#1A1A1A] shadow-md rounded-2xl transition-all duration-200 hover:shadow-lg parent-card" : "glass-card border border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
+    card: theme === "light" ? "bg-white border border-[var(--border-light)] text-[#1A1A1A] shadow-md rounded-2xl transition-all duration-200 hover:shadow-lg parent-card" : "glass-card border border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
     textMuted: theme === "light" ? "text-[#4A4A4A] font-semibold" : "text-slate-400",
     textTitle: theme === "light" ? "text-[#1A1A1A] font-black" : "text-white",
     input: theme === "light" ? "bg-white border border-slate-450 text-[#1A1A1A] placeholder-slate-400 focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20 transition-all rounded-[6px]" : "bg-[#0E1322] border border-slate-800 text-slate-100 rounded-[6px]",
@@ -1141,18 +1141,18 @@ export default function Dashboard() {
     <div className={`flex-1 flex flex-col font-sans overflow-x-hidden min-h-screen pb-24 md:pb-0 transition-colors duration-300 ${theme === "dark" ? "dark" : ""} ${themeClasses.bg}`}>
       
       {/* Header NavBar */}
-      <header className="bg-[#0B0F19]/90 backdrop-blur-md text-slate-900 dark:text-white px-4 py-3 md:px-6 md:py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/60 sticky top-0 z-50">
+      <header className={`${theme === "light" ? "bg-white/80 border-slate-200 text-slate-900 shadow-sm" : "bg-[#0B0F19]/90 border-slate-800/60 text-white"} backdrop-blur-md px-4 py-3 md:px-6 md:py-4 flex items-center justify-between border-b sticky top-0 z-50`}>
         <div className="flex items-center space-x-2">
           <div className="bg-gradient-to-tr from-indigo-600 to-cyan-500 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
             <Activity className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg md:text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center">
-            Artha<span className="text-indigo-400 font-extrabold">Mind AI</span>
+          <span className={`text-lg md:text-xl font-bold tracking-tight flex items-center ${theme === "light" ? "text-slate-900" : "text-white"}`}>
+            Artha<span className={theme === "light" ? "text-[#007AFF] font-extrabold" : "text-indigo-400 font-extrabold"}>Mind AI</span>
           </span>
         </div>
 
         {/* Clean, Functional Module Navigation */}
-        <nav className="hidden md:flex space-x-2 bg-slate-100 dark:bg-slate-900/60 p-1 border border-slate-200 dark:border-slate-800 rounded-xl">
+        <nav className={`hidden md:flex space-x-2 p-1 border rounded-xl ${theme === "light" ? "bg-slate-50 border-slate-200" : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800"}`}>
           {[
             { id: "research", label: "Stock Analyst", icon: Activity },
             { id: "optimizer", label: "Portfolio Optimizer", icon: PieIcon },
@@ -1169,8 +1169,8 @@ export default function Dashboard() {
                 }}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   isActive 
-                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" 
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                    ? (theme === "light" ? "bg-[#007AFF] text-white shadow-sm" : "bg-indigo-600 text-white shadow-md shadow-indigo-600/10") 
+                    : (theme === "light" ? "bg-white border border-slate-200 text-slate-700 hover:bg-[#007AFF] hover:text-white shadow-2xs" : "text-slate-400 hover:text-white hover:bg-slate-800/50")
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -1220,7 +1220,7 @@ export default function Dashboard() {
 
       {/* Real-time scrolling ticker tape (Fanciness & Real stock app feel) */}
       {isMounted && (
-        <div className="bg-[#090C16] border-b border-indigo-500/10 text-white py-1.5 overflow-hidden text-3xs font-extrabold select-none relative z-40">
+        <div className={`border-b py-1.5 overflow-hidden text-3xs font-extrabold select-none relative z-40 ${theme === "light" ? "bg-gradient-to-r from-[#F7F9FC] to-[#E9EDF5] border-slate-200 text-slate-900" : "bg-[#090C16] border-indigo-500/10 text-white"}`}>
           <div className="animate-marquee whitespace-nowrap flex space-x-12">
             {[
               { symbol: "RELIANCE.NS", price: "₹2,450.25", change: "+1.25%", up: true },
@@ -1242,12 +1242,12 @@ export default function Dashboard() {
               { symbol: "LT.NS", price: "₹2,340.50", change: "-0.65%", up: false }
             ]).map((item, idx) => (
               <div key={idx} className="flex items-center space-x-2">
-                <span className="text-slate-400 font-semibold">{item.symbol}</span>
-                <span className="text-white font-bold">{item.price}</span>
-                <span className={`px-1.5 py-0.5 rounded font-black text-4xs ${
+                <span className={theme === "light" ? "text-slate-650 font-semibold" : "text-slate-400 font-semibold"}>{item.symbol}</span>
+                <span className={`numeric-monospace font-bold ${theme === "light" ? "text-slate-900" : "text-white"}`}>{item.price}</span>
+                <span className={`numeric-monospace px-1.5 py-0.5 rounded font-black text-4xs ${
                   item.up 
-                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/15" 
-                    : "bg-rose-500/10 text-rose-400 border border-rose-500/15"
+                    ? (theme === "light" ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/15")
+                    : (theme === "light" ? "bg-rose-500/10 text-rose-600 border border-rose-500/20" : "bg-rose-500/10 text-rose-400 border border-rose-500/15")
                 }`}>
                   {item.change}
                 </span>
@@ -1378,37 +1378,37 @@ export default function Dashboard() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6 relative z-10">
-                  <div className="flex gap-3.5 p-4 rounded-xl bg-white/40 dark:bg-slate-900/30 border border-white/20 dark:border-slate-800/40">
-                    <div className="bg-indigo-500/10 border border-indigo-500/20 p-2.5 rounded-xl h-10 w-10 flex items-center justify-center shrink-0">
-                      <Search className="h-5 w-5 text-indigo-400" />
+                  <div className={`step-card flex gap-3.5 p-4 rounded-xl border-l-[3px] border-y border-r transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-gradient-to-b from-white to-[#F5F7FA] border-slate-200 border-l-[#007AFF] shadow-sm hover:shadow-md text-slate-800" : "bg-white/40 dark:bg-slate-900/30 border-white/20 dark:border-slate-800/40 border-l-indigo-500 text-white"}`}>
+                    <div className={`p-2.5 rounded-xl h-10 w-10 flex items-center justify-center shrink-0 border ${theme === "light" ? "bg-blue-500/5 border-blue-500/10 shadow-[0_0_12px_rgba(0,122,255,0.15)]" : "bg-indigo-500/10 border-indigo-500/20"}`}>
+                      <Search className={`h-5 w-5 ${theme === "light" ? "text-[#007AFF]" : "text-indigo-400"}`} />
                     </div>
                     <div>
-                      <h4 className="font-bold text-xs">1. Choose a Ticker Symbol</h4>
-                      <p className="text-4xs text-slate-400 mt-1 leading-relaxed">
-                        Enter any asset symbol (e.g. <b>TCS.NS</b>, <b>AAPL</b>, <b>BTC-USD</b>) in the search bar or select from the Watchlist access pills.
+                      <h4 className={`font-bold text-xs ${theme === "light" ? "text-slate-900" : "text-white"}`}>1. Choose a Ticker Symbol</h4>
+                      <p className={`text-4xs mt-1 leading-relaxed ${theme === "light" ? "text-slate-600" : "text-slate-400"}`}>
+                        Enter any asset symbol (e.g. <b className={theme === "light" ? "text-slate-900" : ""}>TCS.NS</b>, <b className={theme === "light" ? "text-slate-900" : ""}>AAPL</b>, <b className={theme === "light" ? "text-slate-900" : ""}>BTC-USD</b>) in the search bar or select from the Watchlist access pills.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex gap-3.5 p-4 rounded-xl bg-white/40 dark:bg-slate-900/30 border border-white/20 dark:border-slate-800/40">
-                    <div className="bg-cyan-500/10 border border-cyan-500/20 p-2.5 rounded-xl h-10 w-10 flex items-center justify-center shrink-0">
-                      <Cpu className="h-5 w-5 text-cyan-400" />
+                  <div className={`step-card flex gap-3.5 p-4 rounded-xl border-l-[3px] border-y border-r transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-gradient-to-b from-white to-[#F5F7FA] border-slate-200 border-l-[#6E56CF] shadow-sm hover:shadow-md text-slate-800" : "bg-white/40 dark:bg-slate-900/30 border-white/20 dark:border-slate-800/40 border-l-cyan-500 text-white"}`}>
+                    <div className={`p-2.5 rounded-xl h-10 w-10 flex items-center justify-center shrink-0 border ${theme === "light" ? "bg-violet-500/5 border-violet-500/10 shadow-[0_0_12px_rgba(110,86,207,0.15)]" : "bg-cyan-500/10 border-cyan-500/20"}`}>
+                      <Cpu className={`h-5 w-5 ${theme === "light" ? "text-[#6E56CF]" : "text-cyan-400"}`} />
                     </div>
                     <div>
-                      <h4 className="font-bold text-xs">2. Run AI Agent Pipeline</h4>
-                      <p className="text-4xs text-slate-400 mt-1 leading-relaxed">
-                        Go to the <b>AI Research Hub</b> tab below and click <b>"Run AI Agent Team"</b> to stream calculations and sentiment scoring in real-time.
+                      <h4 className={`font-bold text-xs ${theme === "light" ? "text-slate-900" : "text-white"}`}>2. Run AI Agent Pipeline</h4>
+                      <p className={`text-4xs mt-1 leading-relaxed ${theme === "light" ? "text-slate-600" : "text-slate-400"}`}>
+                        Go to the <b className={theme === "light" ? "text-slate-900" : ""}>AI Research Hub</b> tab below and click <b className={theme === "light" ? "text-slate-900" : ""}>"Run AI Agent Team"</b> to stream calculations and sentiment scoring in real-time.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex gap-3.5 p-4 rounded-xl bg-white/40 dark:bg-slate-900/30 border border-white/20 dark:border-slate-800/40">
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl h-10 w-10 flex items-center justify-center shrink-0">
-                      <Download className="h-5 w-5 text-emerald-400" />
+                  <div className={`step-card flex gap-3.5 p-4 rounded-xl border-l-[3px] border-y border-r transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-gradient-to-b from-white to-[#F5F7FA] border-slate-200 border-l-[#00C853] shadow-sm hover:shadow-md text-slate-800" : "bg-white/40 dark:bg-slate-900/30 border-white/20 dark:border-slate-800/40 border-l-emerald-500 text-white"}`}>
+                    <div className={`p-2.5 rounded-xl h-10 w-10 flex items-center justify-center shrink-0 border ${theme === "light" ? "bg-emerald-500/5 border-emerald-500/10 shadow-[0_0_12px_rgba(0,200,83,0.15)]" : "bg-emerald-500/10 border-emerald-500/20"}`}>
+                      <Download className={`h-5 w-5 ${theme === "light" ? "text-[#00C853]" : "text-emerald-400"}`} />
                     </div>
                     <div>
-                      <h4 className="font-bold text-xs">3. Analyze & Export PDF</h4>
-                      <p className="text-4xs text-slate-400 mt-1 leading-relaxed">
+                      <h4 className={`font-bold text-xs ${theme === "light" ? "text-slate-900" : "text-white"}`}>3. Analyze & Export PDF</h4>
+                      <p className={`text-4xs mt-1 leading-relaxed ${theme === "light" ? "text-slate-600" : "text-slate-400"}`}>
                         Inspect individual agent outputs (Technical charts, Sentiment dial, SIP calculators) and download the generated PDF Report.
                       </p>
                     </div>
@@ -1418,9 +1418,9 @@ export default function Dashboard() {
             )}
 
              {/* Stock Header Information Card */}
-             <div className={`p-4 md:p-6 rounded-2xl border flex flex-col gap-4 md:gap-6 ${themeClasses.card}`}>
+             <div className={`overflow-hidden rounded-2xl border flex flex-col ${themeClasses.card}`}>
                {/* Top Row: Name, Price, and Watchlist Button */}
-               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 pb-3 md:pb-4 border-b border-slate-200/40 dark:border-slate-800/60">
+               <div className="card-header-gradient flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 p-4 md:p-6 border-b border-slate-200/40 dark:border-slate-800/60">
                  <div className="flex items-center space-x-3 md:space-x-4 max-w-full min-w-0">
                    <div className="bg-indigo-50 dark:bg-[#1C2541]/40 p-2.5 md:p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center shrink-0">
                      <span className="text-sm md:text-base font-black text-indigo-700 dark:text-indigo-400">{selectedTicker.split(".")[0]}</span>
@@ -1432,8 +1432,8 @@ export default function Dashboard() {
                        {loadingInfo && <RefreshCw className="h-3 w-3 animate-spin text-slate-400 shrink-0" />}
                      </h2>
                      <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-1 md:mt-1.5">
-                       <span className="text-lg md:text-xl font-black text-slate-900 dark:text-white">{currencySymbol}{currentStock.currentPrice.toFixed(2)}</span>
-                       <span className={`text-[10px] md:text-xs font-bold px-1.5 py-0.5 rounded flex items-center border ${
+                       <span className="numeric-monospace text-lg md:text-xl font-black text-slate-900 dark:text-white">{currencySymbol}{currentStock.currentPrice.toFixed(2)}</span>
+                       <span className={`numeric-monospace text-[10px] md:text-xs font-bold px-1.5 py-0.5 rounded flex items-center border ${
                          currentStock.currentPrice - currentStock.close >= 0 
                            ? "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" 
                            : "text-rose-500 bg-rose-500/10 border-rose-500/20"
@@ -1462,35 +1462,35 @@ export default function Dashboard() {
                    </button>
                  )}
                </div>
- 
-               {/* Bottom Row: Key Metrics Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4 text-xs">
-                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+
+                {/* Bottom Row: Key Metrics Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4 text-xs p-4 md:p-6">
+                  <div className={`metric-box p-2.5 md:p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-white border-slate-200 shadow-sm hover:shadow-md" : "bg-slate-100/60 dark:bg-[#0E1322]/55 border-transparent"}`}>
                     <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Today's High</div>
-                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currencySymbol}{currentStock.high.toFixed(2)}</div>
+                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currencySymbol}{currentStock.high.toFixed(2)}</div>
                   </div>
-                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                  <div className={`metric-box p-2.5 md:p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-white border-slate-200 shadow-sm hover:shadow-md" : "bg-slate-100/60 dark:bg-[#0E1322]/55 border-transparent"}`}>
                     <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Today's Low</div>
-                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currencySymbol}{currentStock.low.toFixed(2)}</div>
+                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currencySymbol}{currentStock.low.toFixed(2)}</div>
                   </div>
-                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                  <div className={`metric-box p-2.5 md:p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-white border-slate-200 shadow-sm hover:shadow-md" : "bg-slate-100/60 dark:bg-[#0E1322]/55 border-transparent"}`}>
                     <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Open Price</div>
-                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currencySymbol}{currentStock.open.toFixed(2)}</div>
+                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currencySymbol}{currentStock.open.toFixed(2)}</div>
                   </div>
-                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                  <div className={`metric-box p-2.5 md:p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-white border-slate-200 shadow-sm hover:shadow-md" : "bg-slate-100/60 dark:bg-[#0E1322]/55 border-transparent"}`}>
                     <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Prev. Close</div>
-                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currencySymbol}{currentStock.close.toFixed(2)}</div>
+                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currencySymbol}{currentStock.close.toFixed(2)}</div>
                   </div>
-                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                  <div className={`metric-box p-2.5 md:p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-white border-slate-200 shadow-sm hover:shadow-md" : "bg-slate-100/60 dark:bg-[#0E1322]/55 border-transparent"}`}>
                     <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Volume</div>
-                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currentStock.volume}</div>
+                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currentStock.volume}</div>
                   </div>
-                  <div className="bg-slate-100/60 dark:bg-[#0E1322]/55 p-2.5 md:p-3 rounded-xl">
+                  <div className={`metric-box p-2.5 md:p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-white border-slate-200 shadow-sm hover:shadow-md" : "bg-slate-100/60 dark:bg-[#0E1322]/55 border-transparent"}`}>
                     <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Market Cap</div>
-                    <div className="font-extrabold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{currentStock.cap}</div>
+                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currentStock.cap}</div>
                   </div>
                 </div>
-             </div>
+              </div>
             
             {/* Split layout: Chart & Details vs AI predictions */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1498,17 +1498,17 @@ export default function Dashboard() {
               {/* Left Column (Chart, News, About) */}
               <div className="lg:col-span-2 flex flex-col space-y-6">
                 
-                {/*                {/* Refined Unified Workspace Card */}
-                <div className={`p-4 md:p-6 ${themeClasses.card}`}>
+                {/* Refined Unified Workspace Card */}
+                <div className={`overflow-hidden ${themeClasses.card}`}>
                   
-                  {/* Workspace Navigation Tabs */}
-                  <div className="border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
+                  {/* Workspace Navigation Tabs with gradient header */}
+                  <div className="card-header-gradient px-4 py-4 md:px-6 md:py-4 border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
                     <div className="responsive-tabs-container flex text-xs md:text-sm font-semibold gap-x-4 md:gap-x-6 gap-y-2 w-full overflow-y-hidden pb-1 overflow-x-auto md:overflow-x-visible flex-nowrap md:flex-wrap">
                       {[
                         { id: "Overview", label: "Overview & Charts" },
                         { id: "Comparator", label: "Stock Comparator" },
                         { id: "AI Research Hub", label: "AI Research Hub" },
-                        { id: "Technical Metrics", label: "Technical Indicators" },
+                        { id: "Technical Indicators", label: "Technical Indicators" },
                         { id: "News Feed", label: "News Feed" }
                       ].map((tab) => (
                         <button
@@ -1517,7 +1517,7 @@ export default function Dashboard() {
                           className={`transition-all pb-3 relative whitespace-nowrap cursor-pointer ${
                             activeWorkspaceTab === tab.id
                               ? "text-indigo-500 font-bold"
-                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                              : "text-slate-655 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                           }`}
                         >
                           {tab.label}
@@ -1529,8 +1529,8 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Tab Contents */}
-                  <div className="mt-4">
+                  {/* Tab Contents with padding */}
+                  <div className="mt-4 px-4 pb-4 md:px-6 md:pb-6">
                     
                     {/* 1. OVERVIEW & CHARTS TAB */}
                     {activeWorkspaceTab === "Overview" && (
@@ -1553,7 +1553,9 @@ export default function Dashboard() {
                                 className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                                   chartSubView === view.id
                                     ? "bg-indigo-600 text-white shadow-sm"
-                                    : "text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                                    : theme === "light" 
+                                      ? "text-slate-600 hover:text-slate-900" 
+                                      : "text-slate-400 hover:text-slate-200"
                                 }`}
                               >
                                 {view.label}
@@ -1569,8 +1571,12 @@ export default function Dashboard() {
                                 onClick={() => setTimePeriod(period)}
                                 className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all border whitespace-nowrap ${
                                   timePeriod === period 
-                                    ? "bg-slate-100 dark:bg-slate-800 text-indigo-500 border-slate-200 dark:border-slate-700 shadow-2xs" 
-                                    : "text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-300"
+                                    ? theme === "light"
+                                      ? "bg-white text-indigo-600 border-slate-300 shadow-2xs"
+                                      : "bg-slate-800 text-indigo-405 border-slate-700 shadow-2xs"
+                                    : theme === "light"
+                                      ? "text-slate-600 border-transparent hover:text-slate-900"
+                                      : "text-slate-400 border-transparent hover:text-slate-300"
                                 }`}
                               >
                                 {period}
@@ -1672,14 +1678,14 @@ export default function Dashboard() {
                           </div>
                           
                           {/* Dynamic metadata row */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs bg-slate-100/40 dark:bg-[#0E1322]/40 p-4 rounded-xl">
+                          <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 text-xs p-4 rounded-xl border ${theme === "light" ? "bg-[#F5F7FA] border-slate-200 text-slate-900" : "bg-slate-100/40 dark:bg-[#0E1322]/40 border-transparent text-slate-200"}`}>
                             <div>
                               <span className="text-slate-400 font-bold block uppercase text-3xs mb-0.5">Sector</span>
-                              <span className="font-semibold text-slate-800 dark:text-slate-200">{currentStock.sector}</span>
+                              <span className={`font-semibold ${theme === "light" ? "text-slate-800" : "text-slate-200"}`}>{currentStock.sector}</span>
                             </div>
                             <div>
                               <span className="text-slate-400 font-bold block uppercase text-3xs mb-0.5">Industry</span>
-                              <span className="font-semibold text-slate-800 dark:text-slate-200">{currentStock.industry}</span>
+                              <span className={`font-semibold ${theme === "light" ? "text-slate-800" : "text-slate-200"}`}>{currentStock.industry}</span>
                             </div>
                             <div>
                               <span className="text-slate-400 font-bold block uppercase text-3xs mb-0.5">Official Website</span>
@@ -1688,7 +1694,7 @@ export default function Dashboard() {
                                   href={sanitizeUrl(currentStock.website)} 
                                   target="_blank" 
                                   rel="noopener noreferrer" 
-                                  className="font-semibold text-indigo-400 hover:underline flex items-center gap-1 hover:text-indigo-300"
+                                  className={`font-semibold flex items-center gap-1 hover:underline ${theme === "light" ? "text-[#007AFF] hover:text-blue-600" : "text-indigo-400 hover:text-indigo-300"}`}
                                 >
                                   <span>Visit website</span>
                                   <ChevronRight className="h-3 w-3" />
@@ -1783,8 +1789,8 @@ export default function Dashboard() {
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           
                           {/* Left Panel: Master Report */}
-                          <div className="bg-slate-50 dark:bg-[#0E1322]/40 p-4 border border-slate-200 dark:border-slate-800/80 rounded-xl flex flex-col h-[340px] justify-between">
-                            <div className="flex items-center justify-between gap-2 border-b pb-2 mb-3 border-slate-200 dark:border-slate-800 w-full min-w-0">
+                          <div className="bg-slate-50 dark:bg-[#0E1322]/40 border border-slate-200 dark:border-slate-800/80 rounded-xl flex flex-col h-[340px] overflow-hidden justify-between">
+                            <div className="card-header-gradient flex items-center justify-between gap-2 border-b px-4 py-2.5 border-slate-200 dark:border-slate-800 w-full min-w-0">
                               <span className="font-bold text-slate-800 dark:text-white text-xs truncate flex-1 min-w-0">AI Research Specialist Memorandum</span>
                               {(() => {
                                 if (pdfFilename) {
@@ -1832,7 +1838,7 @@ export default function Dashboard() {
                                 );
                               })()}
                             </div>
-                            <div className="flex-1 overflow-y-auto pr-1 text-2xs leading-relaxed text-slate-600 dark:text-slate-400 font-sans">
+                            <div className="flex-1 overflow-y-auto px-4 pb-4 pr-1 text-2xs leading-relaxed text-slate-600 dark:text-slate-400 font-sans">
                               {masterReport ? (
                                 <div className="space-y-1">{renderMarkdown(masterReport)}</div>
                               ) : (
@@ -1845,10 +1851,10 @@ export default function Dashboard() {
                           </div>
 
                           {/* Right Panel: Agent Node Reports tabs */}
-                          <div className="bg-slate-50 dark:bg-[#0E1322]/40 p-4 border border-slate-200 dark:border-slate-800/80 rounded-xl flex flex-col h-[340px]">
+                          <div className="bg-slate-50 dark:bg-[#0E1322]/40 border border-slate-200 dark:border-slate-800/80 rounded-xl flex flex-col h-[340px] overflow-hidden">
                             
-                            {/* Report Sub-navigation */}
-                            <div className="flex space-x-1 p-1 bg-slate-100 dark:bg-[#080B13] border border-slate-200 dark:border-slate-800 rounded-lg mb-3 overflow-x-auto scrollbar-none flex-nowrap">
+                            {/* Report Sub-navigation with gradient header */}
+                            <div className="card-header-gradient flex space-x-1 p-2 bg-slate-100 dark:bg-[#080B13] border-b border-slate-200 dark:border-slate-800 rounded-t-xl overflow-x-auto scrollbar-none flex-nowrap">
                               {[
                                 { id: "tech", label: "Technical" },
                                 { id: "fund", label: "Fundamental" },
@@ -1993,7 +1999,13 @@ export default function Dashboard() {
                                     <button
                                       key={horizon}
                                       onClick={() => setPredictionHorizon(hKey)}
-                                      className={`flex-1 py-1.5 rounded text-3xs font-extrabold transition-all cursor-pointer ${isActive ? "bg-indigo-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                                      className={`flex-1 py-1.5 rounded text-3xs font-extrabold transition-all cursor-pointer ${
+                                        isActive 
+                                          ? "bg-indigo-600 text-white shadow-sm" 
+                                          : theme === "light" 
+                                            ? "text-slate-600 hover:text-slate-900" 
+                                            : "text-slate-400 hover:text-slate-200"
+                                      }`}
                                     >
                                       {horizon}
                                     </button>
@@ -2011,10 +2023,14 @@ export default function Dashboard() {
                                     ▲ {(predictionHorizon === "tomorrow" ? 1.2 : predictionHorizon === "7days" ? 3.4 : 7.5).toFixed(2)}% Estimated Upside
                                   </span>
                                 </div>
-                                <p className="text-3xs text-slate-400 flex items-center gap-1.5 mt-2 bg-slate-100 dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-800 rounded-lg">
-                                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                <div className={`text-3xs flex items-center gap-1.5 mt-2 p-3 border rounded-lg ${
+                                  theme === "light" 
+                                    ? "bg-emerald-500/5 border-emerald-500/10 text-emerald-800" 
+                                    : "bg-slate-900 border-slate-800 text-slate-400"
+                                }`}>
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                                   <span>Automated predictions support a positive target based on short-term RSI parameters and 10 SMA support.</span>
-                                </p>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -2615,14 +2631,14 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   
                   {/* Weights allocations */}
-                  <div className={`p-5 rounded-2xl border flex flex-col justify-between ${themeClasses.card}`}>
+                  <div className={`overflow-hidden rounded-2xl border flex flex-col justify-between ${themeClasses.card}`}>
                     <div>
-                      <h4 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                        <span>Optimal Maximum Sharpe Weights</span>
+                      <div className="card-header-gradient px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                        <span className="font-bold text-slate-900 dark:text-white text-sm">Optimal Maximum Sharpe Weights</span>
                         <span className="text-3xs text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-bold uppercase">Optimal</span>
-                      </h4>
+                      </div>
                       
-                      <div className="space-y-3 mt-4">
+                      <div className="space-y-3 p-5">
                         {Object.entries(optResults.max_sharpe.weights).map(([ticker, weight]: [string, any]) => (
                           <div key={ticker} className="flex flex-col space-y-1">
                             <div className="flex justify-between text-2xs font-semibold text-slate-600 dark:text-slate-300">
@@ -2637,7 +2653,7 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="border-t pt-4 mt-6 grid grid-cols-3 gap-2 text-center border-slate-100 dark:border-slate-800">
+                    <div className="border-t pt-4 mx-5 mb-5 mt-2 grid grid-cols-3 gap-2 text-center border-slate-100 dark:border-slate-800">
                       <div>
                         <div className="text-3xs text-slate-400 font-bold uppercase">Return</div>
                         <div className="text-sm font-bold text-emerald-500">{(optResults.max_sharpe.return * 100).toFixed(2)}%</div>
@@ -3342,7 +3358,11 @@ export default function Dashboard() {
 
       </main>
 
-      <footer className="border-t border-slate-200 dark:border-slate-900 bg-slate-50 dark:bg-slate-950 py-6 px-6 text-center text-slate-400 text-3xs space-y-2 mt-auto">
+      <footer className={`border-t py-6 px-6 text-center text-3xs space-y-2 mt-auto ${
+        theme === "light" 
+          ? "bg-[#F5F7FA] border-slate-200 text-slate-500" 
+          : "bg-[#070B14] border-slate-900 text-slate-400"
+      }`}>
         <p>© 2026 ArthaMind AI Inc. Created for Advanced Agentic AI Workshop. All rights reserved.</p>
         <p className="max-w-4xl mx-auto leading-relaxed">
           <b>SEBI Warning Disclaimer:</b> The stock forecasts, price predictions, and options weights provided herein are generated by automated AI research agents. This platform is built for student curriculum demonstration. We are not registered with SEBI (Securities and Exchange Board of India). Allocate capital at your own discretion.
@@ -3350,7 +3370,11 @@ export default function Dashboard() {
       </footer>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0B0F19]/95 backdrop-blur-lg border-t border-slate-800/80 px-4 py-2.5 flex justify-around items-center shadow-lg">
+      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-50 backdrop-blur-lg border-t px-4 py-2.5 flex justify-around items-center shadow-lg ${
+        theme === "light" 
+          ? "bg-white/95 border-slate-200" 
+          : "bg-[#0B0F19]/95 border-slate-800/80"
+      }`}>
         {[
           { id: "research", label: "Analyst", icon: Activity },
           { id: "optimizer", label: "Optimizer", icon: PieIcon },
@@ -3367,8 +3391,12 @@ export default function Dashboard() {
               }}
               className={`flex flex-col items-center space-y-1 py-1 px-3 rounded-xl transition-all ${
                 isActive 
-                  ? "text-indigo-400 font-bold bg-indigo-500/10" 
-                  : "text-slate-400 hover:text-white"
+                  ? theme === "light" 
+                    ? "text-indigo-600 font-bold bg-indigo-50" 
+                    : "text-indigo-400 font-bold bg-indigo-500/10"
+                  : theme === "light" 
+                    ? "text-slate-500 hover:text-slate-900" 
+                    : "text-slate-400 hover:text-white"
               }`}
             >
               <Icon className="h-5 w-5" />
