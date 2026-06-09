@@ -94,6 +94,41 @@ class ResearchReportCache(Base):
     master_report = Column(String)
     last_updated = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
+class PaperTrade(Base):
+    """
+    Tracks executed virtual trades in paper trading simulator
+    """
+    __tablename__ = "paper_trade"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True)
+    action = Column(String)  # 'BUY' or 'SELL'
+    shares = Column(Float)
+    price = Column(Float)
+    timestamp = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+class PaperBalance(Base):
+    """
+    Tracks paper trading virtual cash balance
+    """
+    __tablename__ = "paper_balance"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    balance = Column(Float, default=1000000.0) # default 10 Lakhs virtual cash
+
+class AlertSetting(Base):
+    """
+    Stores user-configured price and rating alerts
+    """
+    __tablename__ = "alert_setting"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True)
+    condition_type = Column(String)  # 'ABOVE', 'BELOW', or 'CROSSOVER'
+    value = Column(Float)
+    is_triggered = Column(Integer, default=0)  # 0 = false, 1 = true
+    created_at = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
 def init_db():
     """
     Creates all database tables
@@ -104,3 +139,4 @@ if __name__ == "__main__":
     print("Initializing SQLite tables...")
     init_db()
     print("Tables initialized successfully.")
+

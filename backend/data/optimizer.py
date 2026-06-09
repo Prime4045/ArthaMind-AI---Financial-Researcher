@@ -5,7 +5,8 @@ from typing import Dict, List, Tuple, Any
 def optimize_portfolio(
     price_df: pd.DataFrame, 
     num_portfolios: int = 2000, 
-    risk_free_rate: float = 0.065 # 6.5% standard Indian RBI repo/risk-free rate
+    risk_free_rate: float = 0.065, # 6.5% standard Indian RBI repo/risk-free rate
+    ai_views: Dict[str, float] = None
 ) -> Dict[str, Any]:
     """
     Optimizes a portfolio of stocks using Modern Portfolio Theory (MPT).
@@ -27,6 +28,12 @@ def optimize_portfolio(
     # Annualize returns (approx 252 trading days per year)
     mean_daily_returns = returns_df.mean()
     annual_returns = mean_daily_returns * 252
+    
+    # Apply Black-Litterman style expected return adjustments (tilting expected returns by AI views)
+    if ai_views:
+        for ticker, tilt in ai_views.items():
+            if ticker in annual_returns:
+                annual_returns[ticker] += tilt
     
     # Annualize covariance matrix
     cov_matrix = returns_df.cov() * 252

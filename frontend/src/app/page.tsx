@@ -8,7 +8,7 @@ import {
 import { 
   TrendingUp, BarChart2, DollarSign, Search, Award, RefreshCw, 
   Trash2, Plus, Download, Cpu, Calculator, PieChart as PieIcon, Sun, Moon, CheckCircle2,
-  Network, Activity, Landmark, ChevronRight, HelpCircle
+  Network, Activity, Landmark, ChevronRight, HelpCircle, Play, Bell, Wallet, RotateCcw, History
 } from "lucide-react";
 
 const DEFAULT_TICKERS = [
@@ -235,8 +235,8 @@ export default function Dashboard() {
   // Onboarding guide closeable state
   const [showOnboarding, setShowOnboarding] = useState(true);
 
-  // Screen views (research, portfolio optimizer, personal finance)
-  const [activeTab, setActiveTab] = useState<"research" | "optimizer" | "finance">("research");
+  // Screen views (research, portfolio optimizer, personal finance, backtesting, paper trading, alerts)
+  const [activeTab, setActiveTab] = useState<"research" | "optimizer" | "finance" | "backtesting" | "papertrading" | "alerts">("research");
   
   // Workspace tabs
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<string>("Overview");
@@ -328,6 +328,29 @@ export default function Dashboard() {
   const [compareSearchA, setCompareSearchA] = useState("");
   const [compareSearchB, setCompareSearchB] = useState("");
   const [compareSuggestionsA, setCompareSuggestionsA] = useState<any[]>([]);
+  // Advanced features states
+  const [backtestLoading, setBacktestLoading] = useState(false);
+  const [backtestPeriod, setBacktestPeriod] = useState("1y");
+  const [backtestResults, setBacktestResults] = useState<any>(null);
+
+  const [paperPortfolio, setPaperPortfolio] = useState<any>(null);
+  const [paperLoading, setPaperLoading] = useState(false);
+  const [tradeTicker, setTradeTicker] = useState("RELIANCE.NS");
+  const [tradeAction, setTradeAction] = useState<"BUY" | "SELL">("BUY");
+  const [tradeShares, setTradeShares] = useState<number>(10);
+  const [tradeMessage, setTradeMessage] = useState("");
+  const [tradeError, setTradeError] = useState("");
+
+  const [alertsList, setAlertsList] = useState<any[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertTicker, setAlertTicker] = useState("RELIANCE.NS");
+  const [alertCondition, setAlertCondition] = useState<"ABOVE" | "BELOW">("ABOVE");
+  const [alertValue, setAlertValue] = useState("");
+  const [alertMessage, setAlertMessage] = useState("");
+
+  const [mlRetrainLoading, setMlRetrainLoading] = useState(false);
+  const [mlRetrainLogs, setMlRetrainLogs] = useState<string>("");
+  const [useAiViews, setUseAiViews] = useState(false);
   const [compareSuggestionsB, setCompareSuggestionsB] = useState<any[]>([]);
   const [showCompareSuggestionsA, setShowCompareSuggestionsA] = useState(false);
   const [showCompareSuggestionsB, setShowCompareSuggestionsB] = useState(false);
@@ -540,8 +563,21 @@ export default function Dashboard() {
     fetchTickers();
     fetchSavedPortfolios();
     fetchExpenses();
+    fetchPaperPortfolio();
+    fetchAlerts();
     checkBackendConnection();
   }, []);
+
+  // Fetch paper trading, alerts, and backtest dynamically when tab changes
+  useEffect(() => {
+    if (activeTab === "papertrading") {
+      fetchPaperPortfolio();
+    } else if (activeTab === "alerts") {
+      fetchAlerts();
+    } else if (activeTab === "backtesting") {
+      runBacktest();
+    }
+  }, [activeTab, selectedTicker, backtestPeriod]);
 
   async function checkBackendConnection() {
     try {
@@ -682,6 +718,147 @@ export default function Dashboard() {
     }
   }
 
+  // Backtesting API
+  async function runBacktest() {
+    setBacktestLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/stock/${selectedTicker}/backtest?period=${backtestPeriod}`);
+      if (res.ok) {
+        const data = await res.json();
+        setBacktestResults(data);
+      } else {
+        setBacktestResults(null);
+      }
+    } catch (err) {
+      console.error("Failed to run backtest:", err);
+      setBacktestResults(null);
+    } finally {
+      setBacktestLoading(false);
+    }
+  }
+
+  // Paper Trading API
+  async function fetchPaperPortfolio() {
+    setPaperLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/paper/portfolio`);
+      if (res.ok) {
+        const data = await res.json();
+        setPaperPortfolio(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch paper portfolio:", err);
+    } finally {
+      setPaperLoading(false);
+    }
+  }
+
+  async function submitPaperTrade(ticker: string, action: "BUY" | "SELL", shares: number) {
+    setTradeMessage("");
+    setTradeError("");
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/paper/trade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker, action, shares })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTradeMessage(data.message);
+        fetchPaperPortfolio();
+      } else {
+        setTradeError(data.detail || "Trade order failed.");
+      }
+    } catch (err) {
+      setTradeError("Server error executing trade.");
+      console.error("Failed to submit paper trade:", err);
+    }
+  }
+
+  async function resetPaperTrading() {
+    if (!window.confirm("Are you sure you want to reset your paper trading balance and clear all trades history?")) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/paper/reset`, { method: "POST" });
+      if (res.ok) {
+        fetchPaperPortfolio();
+        alert("Account reset successfully!");
+      }
+    } catch (err) {
+      console.error("Failed to reset account:", err);
+    }
+  }
+
+  // Alerts API
+  async function fetchAlerts() {
+    setAlertsLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/alerts`);
+      if (res.ok) {
+        const data = await res.json();
+        setAlertsList(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch alerts:", err);
+    } finally {
+      setAlertsLoading(false);
+    }
+  }
+
+  async function createAlert(ticker: string, cond: "ABOVE" | "BELOW", val: number) {
+    setAlertMessage("");
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/alerts/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker, condition_type: cond, value: val })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAlertMessage(data.message);
+        setAlertValue("");
+        fetchAlerts();
+      } else {
+        alert(data.detail || "Failed to create alert.");
+      }
+    } catch (err) {
+      console.error("Failed to create alert:", err);
+    }
+  }
+
+  async function deleteAlert(id: number) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/alerts/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchAlerts();
+      }
+    } catch (err) {
+      console.error("Failed to delete alert:", err);
+    }
+  }
+
+  // ML Retraining API
+  async function triggerMlRetrain() {
+    setMlRetrainLoading(true);
+    setMlRetrainLogs("Connecting to training server...");
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ml/retrain`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setMlRetrainLogs(
+          `Self-calibrating complete!\nTrained on ${data.samples_trained} historical daily records.\nFeatures used: ${data.features_used.join(", ")}.\nSaved and reloaded model.`
+        );
+        fetchRecommendation(selectedTicker);
+      } else {
+        setMlRetrainLogs(`Training failed: ${data.detail}`);
+      }
+    } catch (err) {
+      setMlRetrainLogs("Retraining connection failed.");
+      console.error("Failed to retrain model:", err);
+    } finally {
+      setMlRetrainLoading(false);
+    }
+  }
+
   // Debounced Search Autosuggest
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
@@ -813,7 +990,7 @@ export default function Dashboard() {
   const optimizeWeights = async () => {
     setOptLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/portfolio/optimize`, {
+      const res = await fetch(`${BACKEND_URL}/api/portfolio/optimize?use_ai_views=${useAiViews}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(portfolioTickers)
@@ -1156,7 +1333,10 @@ export default function Dashboard() {
           {[
             { id: "research", label: "Stock Analyst", icon: Activity },
             { id: "optimizer", label: "Portfolio Optimizer", icon: PieIcon },
-            { id: "finance", label: "Personal Wealth Planner", icon: Landmark }
+            { id: "finance", label: "Wealth Planner", icon: Landmark },
+            { id: "backtesting", label: "Strategy Backtester", icon: History },
+            { id: "papertrading", label: "Paper Simulator", icon: Wallet },
+            { id: "alerts", label: "Alert Center", icon: Bell }
           ].map(module => {
             const isActive = activeTab === module.id;
             const Icon = module.icon;
@@ -1164,10 +1344,10 @@ export default function Dashboard() {
               <button 
                 key={module.id}
                 onClick={() => {
-                  setActiveTab(module.id as "research" | "optimizer" | "finance");
+                  setActiveTab(module.id as any);
                   if (module.id === "research") setActiveWorkspaceTab("Overview");
                 }}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   isActive 
                     ? (theme === "light" ? "bg-[#007AFF] text-white shadow-sm" : "bg-indigo-600 text-white shadow-md shadow-indigo-600/10") 
                     : (theme === "light" ? "bg-white border border-slate-200 text-slate-700 hover:bg-[#007AFF] hover:text-white shadow-2xs" : "text-slate-400 hover:text-white hover:bg-slate-800/50")
@@ -1730,7 +1910,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* Interactive Visual State Graph */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                           {[
                             { id: "fetcher", label: "Data Fetcher", desc: "yfinance Core Connection" },
                             { id: "technical", label: "Technical Analyst", desc: "Trend & momentum nodes" },
@@ -1743,22 +1923,24 @@ export default function Dashboard() {
                             return (
                               <div 
                                 key={node.id} 
-                                className={`p-2.5 md:p-3 rounded-xl border flex flex-col justify-between transition-all duration-300 relative ${
+                                className={`p-4 md:p-5 rounded-2xl border flex flex-col justify-between transition-all duration-300 relative min-h-[105px] ${
                                   nodeState === "completed" 
-                                    ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-500 dark:text-emerald-400" 
+                                    ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 shadow-sm shadow-emerald-500/5" 
                                     : nodeState === "active"
-                                    ? "bg-indigo-500/10 border-indigo-500/50 text-indigo-500 dark:text-indigo-400 active-pulse"
-                                    : "bg-white dark:bg-[#0E1322]/30 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500"
+                                    ? "bg-indigo-500/10 border-indigo-500/50 text-indigo-600 dark:text-indigo-400 active-pulse shadow-sm shadow-indigo-500/5"
+                                    : "bg-white dark:bg-[#0E1322]/30 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400"
                                 }`}
                               >
-                                <div className="flex items-center justify-between mb-1 gap-1">
-                                  <span className="text-3xs font-extrabold uppercase tracking-wide truncate">{node.label}</span>
-                                  {nodeState === "completed" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
-                                  {nodeState === "active" && <RefreshCw className="h-3.5 w-3.5 text-indigo-500 animate-spin shrink-0" />}
-                                  {nodeState === "pending" && <HelpCircle className="h-3.5 w-3.5 opacity-30 text-slate-400 shrink-0" />}
+                                <div className="flex items-center justify-between mb-1.5 gap-2">
+                                  <span className="text-xs md:text-sm font-extrabold tracking-tight whitespace-normal break-words">{node.label}</span>
+                                  {nodeState === "completed" && <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />}
+                                  {nodeState === "active" && <RefreshCw className="h-4 w-4 text-indigo-500 animate-spin shrink-0" />}
+                                  {nodeState === "pending" && <HelpCircle className="h-4 w-4 opacity-30 text-slate-400 shrink-0" />}
                                 </div>
-                                <p className="text-4xs leading-normal opacity-75 line-clamp-2">{node.desc}</p>
-                                <span className="absolute bottom-1 right-2 text-4xs font-black opacity-10">0{idx + 1}</span>
+                                <p className="text-2xs md:text-xs leading-relaxed opacity-80 mt-1">{node.desc}</p>
+                                {node.id !== "fetcher" && (
+                                  <span className="absolute bottom-2 right-3 text-2xl font-black opacity-10 select-none">0{idx}</span>
+                                )}
                               </div>
                             );
                           })}
@@ -2361,76 +2543,269 @@ export default function Dashboard() {
               <div className="lg:col-span-1 flex flex-col space-y-6">
                 
                 {/* AI Recommendation Center & Trade Signals Card */}
-                {loadingRecommendation ? (
-                  <div className={`p-16 rounded-2xl border flex flex-col items-center justify-center text-slate-400 text-xs text-center ${themeClasses.card}`}>
-                    <RefreshCw className="h-5 w-5 animate-spin mb-2 text-indigo-500" />
-                    <span>Analyzing quant triggers & ML model...</span>
+                {/* AI Recommendation Center & Trade Signals Card */}
+                <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
+                  <div className="flex justify-between items-center border-b pb-3 mb-4 border-slate-200 dark:border-slate-800">
+                    <h4 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-1.5">
+                      <Cpu className="h-4.5 w-4.5 text-indigo-500" />
+                      <span>AI Recommendation Center</span>
+                    </h4>
+                    {loadingRecommendation ? (
+                      <span className="text-4xs font-bold text-indigo-500 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse flex items-center gap-1">
+                        <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                        <span>Analyzing...</span>
+                      </span>
+                    ) : (
+                      <span className="text-4xs font-bold text-indigo-500 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider">Live ML</span>
+                    )}
                   </div>
-                ) : aiRecommendation ? (
-                  <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
-                    <div className="flex justify-between items-center border-b pb-3 mb-4 border-slate-200 dark:border-slate-800">
-                      <h4 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-1.5">
-                        <Cpu className="h-4.5 w-4.5 text-indigo-500" />
-                        <span>AI Recommendation Center</span>
-                      </h4>
-                      <span className="text-4xs font-bold text-indigo-500 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">Live ML</span>
-                    </div>
 
-                    {/* Recommendation Gauge */}
-                    <div className="flex flex-col items-center justify-center text-center pb-4 border-b border-slate-200/40 dark:border-slate-800/85">
-                      <div className="relative w-36 h-20 overflow-hidden flex justify-center">
-                        {/* Background track */}
-                        <div className="absolute top-0 w-36 h-36 border-12 border-slate-100 dark:border-slate-800 rounded-full"></div>
-                        
-                        {/* Coloured gauge segment based on recommendation */}
-                        {(() => {
-                          const rec = aiRecommendation.recommendation.toUpperCase();
-                          let rotate = 0;
-                          let colorClass = "border-t-slate-300 border-l-slate-300";
-                          if (rec === "STRONG BUY") {
-                            rotate = 65;
-                            colorClass = "border-t-emerald-500 border-l-emerald-500";
-                          } else if (rec === "BUY") {
-                            rotate = 30;
-                            colorClass = "border-t-emerald-400 border-l-emerald-400";
-                          } else if (rec === "HOLD") {
-                            rotate = 0;
-                            colorClass = "border-t-amber-400 border-l-amber-400";
-                          } else if (rec === "SELL") {
-                            rotate = -30;
-                            colorClass = "border-t-rose-400 border-l-rose-400";
-                          } else if (rec === "STRONG SELL") {
-                            rotate = -65;
-                            colorClass = "border-t-rose-500 border-l-rose-500";
-                          }
-                          return (
-                            <>
-                              <div className={`absolute top-0 w-36 h-36 border-12 border-transparent ${colorClass} rounded-full transform rotate-[45deg]`}></div>
-                              {/* Needle */}
-                              <div className="absolute bottom-0 w-1 h-14 bg-slate-800 dark:bg-slate-200 origin-bottom rounded-full transition-transform duration-500" style={{ transform: `rotate(${rotate}deg)` }}></div>
-                            </>
-                          );
-                        })()}
-                        <div className="absolute bottom-0 w-4 h-4 bg-slate-900 dark:bg-white rounded-full border border-slate-200"></div>
-                      </div>
+                  {/* Recommendation Gauge */}
+                  <div className="flex flex-col items-center justify-center text-center pb-4 border-b border-slate-200/40 dark:border-slate-800/85" key={selectedTicker}>
+                    {(() => {
+                      const isLoading = loadingRecommendation || !aiRecommendation;
+                      let rotate = 0;
+                      let rec = "";
                       
-                      <div className="flex flex-col items-center mt-3">
-                        <span className={`font-black text-sm uppercase tracking-wider ${
-                          aiRecommendation.recommendation.includes("BUY") ? "text-emerald-500 text-glow-green" : aiRecommendation.recommendation.includes("SELL") ? "text-rose-500 text-glow-red" : "text-amber-500"
-                        }`}>{aiRecommendation.recommendation}</span>
-                        <span className="text-3xs text-slate-400 mt-1 font-semibold flex items-center gap-1">
-                          <span>Confidence Index:</span>
-                          <span className="font-bold text-slate-700 dark:text-slate-200">{aiRecommendation.confidence}%</span>
-                        </span>
-                      </div>
-                    </div>
+                      if (aiRecommendation) {
+                        rec = aiRecommendation.recommendation.toUpperCase();
+                        if (rec === "STRONG BUY") {
+                          rotate = 65;
+                        } else if (rec === "BUY") {
+                          rotate = 30;
+                        } else if (rec === "HOLD") {
+                          rotate = 0;
+                        } else if (rec === "SELL") {
+                          rotate = -30;
+                        } else if (rec === "STRONG SELL") {
+                          rotate = -65;
+                        }
+                      }
+                      
+                      // Dynamic needle and glow styling
+                      let needleColor = "#6366f1";
+                      let glowColor = "rgba(99, 102, 241, 0.45)";
+                      if (!isLoading && aiRecommendation) {
+                        if (rec.includes("BUY")) {
+                          needleColor = "#10b981";
+                          glowColor = "rgba(16, 185, 129, 0.55)";
+                        } else if (rec.includes("SELL")) {
+                          needleColor = "#f43f5e";
+                          glowColor = "rgba(244, 63, 94, 0.55)";
+                        } else {
+                          needleColor = "#f59e0b";
+                          glowColor = "rgba(245, 158, 11, 0.55)";
+                        }
+                      }
 
-                    {/* ML Target Price */}
-                    <div className="py-4 border-b border-slate-200/40 dark:border-slate-800/85 space-y-2">
-                      <div className="flex justify-between items-center text-3xs text-slate-400 font-bold uppercase tracking-wider">
-                        <span>Next-Day ML Target Close</span>
-                        <span>Tomorrow</span>
-                      </div>
+                      return (
+                        <div className="flex flex-col items-center justify-center text-center w-full">
+                          <div className="relative w-full max-w-[240px] h-32 flex items-center justify-center overflow-hidden">
+                            <svg viewBox="0 0 100 60" className="w-full h-full">
+                              <defs>
+                                <linearGradient id="gaugeSpectrum" x1="0%" y1="0%" x2="100%" y2="0%">
+                                  <stop offset="0%" stopColor="#ef4444" /> {/* Red */}
+                                  <stop offset="25%" stopColor="#f97316" /> {/* Orange */}
+                                  <stop offset="50%" stopColor="#eab308" /> {/* Yellow */}
+                                  <stop offset="75%" stopColor="#22c55e" /> {/* Green */}
+                                  <stop offset="100%" stopColor="#10b981" /> {/* Emerald */}
+                                </linearGradient>
+                                <linearGradient id="glassGlare" x1="0%" y1="0%" x2="0%" y2="100%">
+                                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.35" />
+                                  <stop offset="60%" stopColor="#ffffff" stopOpacity="0.0" />
+                                </linearGradient>
+                                <radialGradient id="metallicHub" cx="50%" cy="50%" r="50%" fx="30%" fy="30%">
+                                  <stop offset="0%" stopColor="#e2e8f0" />
+                                  <stop offset="45%" stopColor="#cbd5e1" />
+                                  <stop offset="80%" stopColor="#64748b" />
+                                  <stop offset="100%" stopColor="#334155" />
+                                </radialGradient>
+                                <filter id="needleShadow" x="-30%" y="-30%" width="160%" height="160%">
+                                  <feDropShadow dx="0" dy="1.2" stdDeviation="0.8" floodOpacity="0.35" />
+                                </filter>
+                              </defs>
+                              
+                              {/* Background arc glow (Warm active segment glow behind track) */}
+                              {!isLoading && (() => {
+                                let glowArcColor = "";
+                                let glowD = "";
+                                if (rec === "STRONG BUY" || rec === "BUY") {
+                                  glowArcColor = "#10b981";
+                                  glowD = "M 50 10 A 40 40 0 0 1 90 50";
+                                } else if (rec === "STRONG SELL" || rec === "SELL") {
+                                  glowArcColor = "#ef4444";
+                                  glowD = "M 10 50 A 40 40 0 0 1 50 10";
+                                } else {
+                                  glowArcColor = "#eab308";
+                                  glowD = "M 30 26 A 40 40 0 0 1 70 26";
+                                }
+                                return (
+                                  <path 
+                                    d={glowD} 
+                                    fill="none" 
+                                    stroke={glowArcColor} 
+                                    strokeWidth="14" 
+                                    strokeLinecap="round" 
+                                    opacity="0.22" 
+                                    filter="blur(3px)"
+                                  />
+                                );
+                              })()}
+
+                              {/* Concentric blueprint guide lines */}
+                              <path 
+                                d="M 6 50 A 44 44 0 0 1 94 50" 
+                                fill="none" 
+                                stroke={theme === "light" ? "rgba(148, 163, 184, 0.15)" : "rgba(51, 65, 85, 0.3)"} 
+                                strokeWidth="0.5" 
+                              />
+                              <path 
+                                d="M 14 50 A 36 36 0 0 1 86 50" 
+                                fill="none" 
+                                stroke={theme === "light" ? "rgba(148, 163, 184, 0.1)" : "rgba(51, 65, 85, 0.2)"} 
+                                strokeWidth="0.5" 
+                                strokeDasharray="1,2" 
+                              />
+                              
+                              {/* Base track */}
+                              <path 
+                                d="M 10 50 A 40 40 0 0 1 90 50" 
+                                fill="none" 
+                                stroke={theme === "light" ? "#f1f5f9" : "#111827"} 
+                                strokeWidth="8" 
+                                strokeLinecap="round" 
+                              />
+                              
+                              {/* Color spectrum track */}
+                              <path 
+                                d="M 10 50 A 40 40 0 0 1 90 50" 
+                                fill="none" 
+                                stroke="url(#gaugeSpectrum)" 
+                                strokeWidth="8" 
+                                strokeLinecap="round" 
+                                opacity="0.95"
+                              />
+                              
+                              {/* Ticks around the gauge */}
+                              {/* Major Ticks */}
+                              <line x1="50" y1="6" x2="50" y2="10" stroke="#ef4444" strokeWidth="0.75" transform="rotate(-90, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="10" stroke="#f97316" strokeWidth="0.75" transform="rotate(-60, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="10" stroke="#f59e0b" strokeWidth="0.75" transform="rotate(-30, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="10" stroke="#eab308" strokeWidth="0.75" transform="rotate(0, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="10" stroke="#84cc16" strokeWidth="0.75" transform="rotate(30, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="10" stroke="#22c55e" strokeWidth="0.75" transform="rotate(60, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="10" stroke="#10b981" strokeWidth="0.75" transform="rotate(90, 50, 50)" />
+                              
+                              {/* Minor Ticks */}
+                              <line x1="50" y1="6" x2="50" y2="8" stroke={theme === "light" ? "#94a3b8" : "#475569"} strokeWidth="0.4" transform="rotate(-75, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="8" stroke={theme === "light" ? "#94a3b8" : "#475569"} strokeWidth="0.4" transform="rotate(-45, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="8" stroke={theme === "light" ? "#94a3b8" : "#475569"} strokeWidth="0.4" transform="rotate(-15, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="8" stroke={theme === "light" ? "#94a3b8" : "#475569"} strokeWidth="0.4" transform="rotate(15, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="8" stroke={theme === "light" ? "#94a3b8" : "#475569"} strokeWidth="0.4" transform="rotate(45, 50, 50)" />
+                              <line x1="50" y1="6" x2="50" y2="8" stroke={theme === "light" ? "#94a3b8" : "#475569"} strokeWidth="0.4" transform="rotate(75, 50, 50)" />
+
+                              {/* Glare reflection overlay */}
+                              <path 
+                                d="M 10 50 A 40 40 0 0 1 90 50 Z" 
+                                fill="url(#glassGlare)" 
+                                opacity="0.08" 
+                                pointerEvents="none" 
+                              />
+
+                              {/* Gauge labels */}
+                              <text x="12" y="58" className="text-[4px] font-black fill-rose-500/90 tracking-wider" textAnchor="middle">SELL</text>
+                              <text x="50" y="5" className="text-[4px] font-black fill-amber-500/90 tracking-wider" textAnchor="middle">HOLD</text>
+                              <text x="88" y="58" className="text-[4px] font-black fill-emerald-500/90 tracking-wider" textAnchor="middle">BUY</text>
+
+                              {/* Needle group */}
+                              <g 
+                                className={isLoading ? "gauge-needle-scanning" : "gauge-needle-animate"} 
+                                style={{ 
+                                  '--target-rotation': `${rotate}deg`,
+                                  transform: isLoading ? undefined : `rotate(${rotate}deg)`,
+                                  transformOrigin: "50px 50px",
+                                  filter: `drop-shadow(0 0 3px ${needleColor})`
+                                } as React.CSSProperties}
+                              >
+                                <polygon 
+                                  points="49,50 50,8 51,50" 
+                                  fill={needleColor} 
+                                  filter="url(#needleShadow)"
+                                />
+                                <line 
+                                  x1="50" y1="50" x2="50" y2="12" 
+                                  stroke="#ffffff" 
+                                  strokeWidth="0.35" 
+                                  opacity="0.8"
+                                />
+                              </g>
+                              
+                              {/* 3D Beveled Hub Center Pin */}
+                              <circle cx="50" cy="50" r="5.5" fill="url(#metallicHub)" stroke="#1e293b" strokeWidth="0.3" filter="url(#needleShadow)" />
+                              <circle cx="50" cy="50" r="2.2" fill="#4f46e5" />
+                              <circle cx="50" cy="50" r="0.8" fill="#a5b4fc" />
+                            </svg>
+                          </div>
+                          
+                          {/* HUD readout panel */}
+                          <div className="flex flex-col items-center mt-4 w-full">
+                            {isLoading ? (
+                              <div className="bg-slate-100/40 dark:bg-[#080d19] p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800/80 w-full max-w-[200px] flex flex-col items-center justify-center shadow-inner">
+                                <span className="text-[9px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest animate-pulse flex items-center gap-1.5">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-ping"></span>
+                                  CALIBRATING...
+                                </span>
+                                <span className="text-[8px] text-slate-400 dark:text-slate-500 mt-1 font-bold">
+                                  ENGINES RUNNING
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center w-full">
+                                {/* Glowing Readout Panel */}
+                                <div className={`px-4 py-2 rounded-xl border flex flex-col items-center justify-center min-w-[190px] shadow-sm transition-all duration-500 ${
+                                  rec.includes("BUY") 
+                                    ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-emerald-500/5" 
+                                    : rec.includes("SELL") 
+                                      ? "bg-rose-500/5 border-rose-500/20 text-rose-600 dark:text-rose-500 shadow-rose-500/5" 
+                                      : "bg-amber-500/5 border-amber-500/20 text-amber-600 dark:text-amber-500 shadow-amber-500/5"
+                                }`}>
+                                  <span className="text-[8px] font-black uppercase tracking-widest opacity-60">RECOMMENDED ACTION</span>
+                                  <span className="font-extrabold text-sm uppercase tracking-wider mt-0.5 animate-pulse">
+                                    {aiRecommendation.recommendation}
+                                  </span>
+                                </div>
+                                
+                                <div className="flex items-center gap-4 mt-2.5 text-3xs text-slate-405 dark:text-slate-400 font-extrabold">
+                                  <span className="flex items-center gap-1">
+                                    <span>CONFIDENCE:</span>
+                                    <span className={`font-black ${
+                                      aiRecommendation.confidence > 75 
+                                        ? "text-emerald-500" 
+                                        : aiRecommendation.confidence > 50 
+                                          ? "text-amber-500" 
+                                          : "text-slate-550"
+                                    }`}>{aiRecommendation.confidence}%</span>
+                                  </span>
+                                  <span className="text-slate-300 dark:text-slate-800">|</span>
+                                  <span>ML ENGINE v2.0</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* ML Target Price */}
+                  <div className="py-4 border-b border-slate-200/40 dark:border-slate-800/85 space-y-2">
+                    <div className="flex justify-between items-center text-3xs text-slate-400 font-bold uppercase tracking-wider">
+                      <span>Next-Day ML Target Close</span>
+                      <span>Tomorrow</span>
+                    </div>
+                    {loadingRecommendation || !aiRecommendation ? (
+                      <div className="h-7 w-2/3 bg-slate-100 dark:bg-slate-850 animate-pulse rounded-md mt-1"></div>
+                    ) : (
                       <div className="flex items-center justify-between">
                         <span className="text-xl font-black text-slate-900 dark:text-white">
                           ₹{aiRecommendation.predicted_price.toFixed(2)}
@@ -2443,70 +2818,35 @@ export default function Dashboard() {
                           {aiRecommendation.predicted_change_pct >= 0 ? "▲ +" : "▼ "}{aiRecommendation.predicted_change_pct.toFixed(2)}% Target Return
                         </span>
                       </div>
-                    </div>
+                    )}
+                  </div>
 
-                    {/* Active Quantitative Triggers */}
-                    <div className="pt-4 space-y-3">
-                      <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Active Signal Triggers</span>
+                  {/* Active Quantitative Triggers */}
+                  <div className="pt-4 space-y-3">
+                    <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Active Signal Triggers</span>
+                    {loadingRecommendation || !aiRecommendation ? (
+                      <div className="space-y-2.5">
+                        <div className="h-10 w-full bg-slate-100 dark:bg-slate-850 animate-pulse rounded-lg"></div>
+                        <div className="h-10 w-full bg-slate-100 dark:bg-slate-850 animate-pulse rounded-lg"></div>
+                        <div className="h-10 w-full bg-slate-100 dark:bg-slate-850 animate-pulse rounded-lg"></div>
+                      </div>
+                    ) : (
                       <div className="space-y-2.5 max-h-[170px] overflow-y-auto pr-1">
                         {aiRecommendation.signals.map((sig: any, idx: number) => (
                           <div key={idx} className="bg-slate-100/40 dark:bg-[#0E1322]/55 p-2.5 rounded-xl space-y-1">
                             <div className="flex justify-between items-center text-3xs">
                               <span className="font-bold text-slate-700 dark:text-slate-300">{sig.name}</span>
                               <span className={`px-2 py-0.5 rounded-full text-4xs font-black uppercase ${
-                                sig.status === "Bullish" ? "bg-emerald-500/10 text-emerald-500" : sig.status === "Bearish" ? "bg-rose-500/10 text-rose-500" : "bg-amber-500/10 text-amber-500"
+                                sig.status === "Bullish" || sig.status.includes("BUY") ? "bg-emerald-500/10 text-emerald-500" : sig.status === "Bearish" || sig.status.includes("SELL") ? "bg-rose-500/10 text-rose-500" : "bg-amber-500/10 text-amber-500"
                               }`}>{sig.status}</span>
                             </div>
                             <p className="text-4xs text-slate-400 leading-relaxed font-semibold">{sig.desc}</p>
                           </div>
                         ))}
                       </div>
-                    </div>
+                    )}
                   </div>
-                ) : (
-                  <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
-                    <h4 className="font-bold text-slate-900 dark:text-white text-sm border-b pb-3 mb-4 border-slate-200 dark:border-slate-800 flex items-center gap-1.5">
-                      <Cpu className="h-4.5 w-4.5 text-emerald-500" />
-                      AI Price Prediction
-                    </h4>
-
-                    {/* Forecast horizon Tabs */}
-                    <div className="flex space-x-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-lg mb-4">
-                      {["Tomorrow", "Next 7 Days", "Next 30 Days"].map((horizon, idx) => {
-                        const hKey = idx === 0 ? "tomorrow" : idx === 1 ? "7days" : "30days";
-                        const isActive = predictionHorizon === hKey;
-                        return (
-                          <button
-                            key={horizon}
-                            onClick={() => setPredictionHorizon(hKey)}
-                            className={`flex-1 py-1 rounded text-3xs font-bold transition-all ${isActive ? "bg-white dark:bg-[#131B31] text-emerald-500 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
-                          >
-                            {horizon}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="flex flex-col space-y-2">
-                      <span className="text-3xs text-slate-400 font-bold uppercase">Predicted Price ({predictionHorizon})</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl font-black text-slate-900 dark:text-white">
-                          ₹{(currentStock.currentPrice * (predictionHorizon === "tomorrow" ? 1.012 : predictionHorizon === "7days" ? 1.034 : 1.075)).toFixed(2)}
-                        </span>
-                        <span className="text-2xs font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
-                          ▲ {(predictionHorizon === "tomorrow" ? 1.2 : predictionHorizon === "7days" ? 3.4 : 7.5).toFixed(2)}% Upside
-                        </span>
-                      </div>
-                      <p className="text-3xs text-slate-400 flex items-center gap-1.5 mt-2 bg-slate-50 dark:bg-slate-950 p-2.5 border border-slate-200 dark:border-slate-800 rounded-lg">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                        <span>Bullish momentum expected based on indicators.</span>
-                      </p>
-                      <div className="mt-2 pt-2 border-t border-slate-200/40 dark:border-slate-800/85 text-4xs text-slate-400 leading-normal">
-                        💡 <b>AI Target Logic:</b> Aggregates short-term technical indicators (RSI momentum and 10 SMA support) to project forecasted price trends.
-                      </div>
-                    </div>
-                  </div>
-                )}
+                </div>
 
                 {/* Key Statistics Card */}
                 <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
@@ -2603,6 +2943,16 @@ export default function Dashboard() {
                   className={`border text-slate-900 rounded-xl px-3 py-2 ${themeClasses.input}`}
                 />
               </div>
+
+              <label className="flex items-center space-x-2 text-2xs text-slate-500 dark:text-slate-450 font-semibold cursor-pointer select-none pb-1">
+                <input 
+                  type="checkbox" 
+                  checked={useAiViews} 
+                  onChange={(e) => setUseAiViews(e.target.checked)} 
+                  className="rounded border-slate-300 text-emerald-500 focus:ring-emerald-500" 
+                />
+                <span>(Black-Litterman) Tilt expected returns by AI recommendation views (±8% tilt)</span>
+              </label>
 
               <div className="flex space-x-2 pt-2">
                 <button
@@ -3356,6 +3706,544 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ==================== TAB 4: STRATEGY BACKTESTER ==================== */}
+        {activeTab === "backtesting" && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+            {/* Left Controls Card */}
+            <div className={`p-6 rounded-2xl border flex flex-col space-y-5 ${themeClasses.card}`}>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Quantitative Backtester</h3>
+                <p className="text-2xs text-slate-400">Validate strategy indicators performance over historical time horizons.</p>
+              </div>
+
+              <div className="flex flex-col space-y-1 text-xs">
+                <label className="text-2xs text-slate-400 font-bold uppercase">Asset Selected</label>
+                <select 
+                  value={selectedTicker}
+                  onChange={(e) => setSelectedTicker(e.target.value)}
+                  className={`border rounded-xl px-3 py-2.5 font-semibold ${themeClasses.input}`}
+                >
+                  {tickers.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col space-y-1 text-xs">
+                <label className="text-2xs text-slate-400 font-bold uppercase">Time Horizon</label>
+                <select 
+                  value={backtestPeriod}
+                  onChange={(e) => setBacktestPeriod(e.target.value)}
+                  className={`border rounded-xl px-3 py-2.5 font-semibold ${themeClasses.input}`}
+                >
+                  <option value="6mo">6 Months</option>
+                  <option value="1y">1 Year</option>
+                  <option value="2y">2 Years</option>
+                </select>
+              </div>
+
+              <button
+                onClick={runBacktest}
+                disabled={backtestLoading}
+                className="bg-[#007AFF] hover:bg-blue-600 text-white font-bold text-xs py-3 rounded-xl flex items-center justify-center space-x-2 cursor-pointer shadow-sm transition-all"
+              >
+                {backtestLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                <span>Execute Strategy Backtest</span>
+              </button>
+
+              <hr className="border-slate-200 dark:border-slate-800 my-1" />
+
+              {/* Self-Calibrating ML retrain center */}
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Cpu className="h-4 w-4 text-indigo-500" />
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">ML Calibration Center</h4>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Refit the Random Forest model on 2 years of live market data across multiple benchmark tickers.
+                </p>
+                <button
+                  onClick={triggerMlRetrain}
+                  disabled={mlRetrainLoading}
+                  className="w-full bg-indigo-600/10 border border-indigo-500/20 hover:bg-indigo-600/20 text-indigo-600 dark:text-indigo-400 font-bold text-xs py-2.5 rounded-xl flex items-center justify-center space-x-2 cursor-pointer transition-all"
+                >
+                  {mlRetrainLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                  <span>Calibrate Models</span>
+                </button>
+                {mlRetrainLogs && (
+                  <pre className="p-3 bg-slate-950/90 text-emerald-400 font-mono text-[9px] rounded-lg overflow-x-auto whitespace-pre-wrap max-h-[120px] border border-slate-850">
+                    {mlRetrainLogs}
+                  </pre>
+                )}
+              </div>
+            </div>
+
+            {/* Middle & Right Content */}
+            <div className="lg:col-span-2 flex flex-col space-y-6">
+              {backtestResults ? (
+                <>
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">Strategy Return</span>
+                      <span className={`text-base font-black pt-1 ${backtestResults.strategy_returns >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                        {backtestResults.strategy_returns >= 0 ? "+" : ""}{backtestResults.strategy_returns.toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">Benchmark Return</span>
+                      <span className={`text-base font-black pt-1 ${backtestResults.benchmark_returns >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                        {backtestResults.benchmark_returns >= 0 ? "+" : ""}{backtestResults.benchmark_returns.toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">Alpha vs Index</span>
+                      <span className={`text-base font-black pt-1 ${(backtestResults.strategy_returns - backtestResults.benchmark_returns) >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                        {((backtestResults.strategy_returns - backtestResults.benchmark_returns) >= 0 ? "+" : "")}{(backtestResults.strategy_returns - backtestResults.benchmark_returns).toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">Sharpe Ratio</span>
+                      <span className="text-base font-black text-indigo-500 pt-1">
+                        {backtestResults.sharpe_ratio.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">Win Rate / Max DD</span>
+                      <span className="text-[11px] font-black text-slate-800 dark:text-slate-100 pt-1.5 flex flex-col">
+                        <span>Win: {backtestResults.win_rate.toFixed(1)}%</span>
+                        <span className="text-rose-500 text-[10px]">Max DD: {backtestResults.max_drawdown.toFixed(1)}%</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Equity curve chart */}
+                  <div className={`p-5 rounded-2xl border flex flex-col space-y-4 ${themeClasses.card}`}>
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Equity Curve Comparison</h4>
+                      <span className="text-3xs text-slate-400">Initial Capital: ₹1,00,000</span>
+                    </div>
+                    <div className="h-[280px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={backtestResults.equity_curve}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#F1F5F9" : "#1E293B/50"} />
+                          <XAxis dataKey="Date" tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} />
+                          <YAxis tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} domain={['auto', 'auto']} />
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: theme === "light" ? "#ffffff" : "#0E1322",
+                              borderColor: theme === "light" ? "#E2E8F0" : "#1E293B",
+                              fontSize: "11px",
+                              borderRadius: "12px",
+                              color: theme === "light" ? "#000000" : "#ffffff"
+                            }} 
+                          />
+                          <Legend wrapperStyle={{ fontSize: 10 }} />
+                          <Line type="monotone" dataKey="Strategy" name="Systematic AI Strategy" stroke="#6366F1" strokeWidth={2.5} dot={false} />
+                          <Line type="monotone" dataKey="Benchmark" name="Buy & Hold Index" stroke="#94A3B8" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Closed Trades table */}
+                  <div className={`p-5 rounded-2xl border flex flex-col space-y-3 ${themeClasses.card}`}>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider border-b pb-2 border-slate-200 dark:border-slate-800">Closed Trades Log</h4>
+                    {backtestResults.trades.length > 0 ? (
+                      <div className="overflow-x-auto max-h-[200px] overflow-y-auto">
+                        <table className="w-full text-[10px] text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase">
+                              <th className="py-2">Date</th>
+                              <th className="py-2">Action</th>
+                              <th className="py-2">Price</th>
+                              <th className="py-2">Shares</th>
+                              <th className="py-2">Remaining Cash</th>
+                              <th className="py-2 text-right">Portfolio Equity</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {backtestResults.trades.map((t: any, idx: number) => (
+                              <tr key={idx} className="border-b border-slate-100 dark:border-slate-900/60 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-900/20">
+                                <td className="py-2 font-mono">{t.date}</td>
+                                <td className="py-2">
+                                  <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] ${
+                                    t.action === "BUY" ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+                                  }`}>
+                                    {t.action}
+                                  </span>
+                                </td>
+                                <td className="py-2 font-semibold">₹{t.price.toLocaleString("en-IN")}</td>
+                                <td className="py-2 font-mono">{t.shares}</td>
+                                <td className="py-2 text-slate-400 font-mono">₹{t.cash.toLocaleString("en-IN")}</td>
+                                <td className="py-2 text-right font-bold font-mono">₹{t.equity.toLocaleString("en-IN")}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-slate-500 text-xs">No execution signals were triggered during this period.</div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className={`p-20 border border-dashed rounded-2xl flex flex-col items-center justify-center space-y-3 text-slate-400 text-center ${themeClasses.card}`}>
+                  <History className="h-8 w-8 text-indigo-500/60" />
+                  <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">Run Backtest to View Performance</h4>
+                  <p className="text-xs max-w-sm">
+                    Select a ticker and click "Execute Strategy Backtest" to evaluate trading return curves and win/loss rates.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== TAB 5: PAPER TRADING SIMULATOR ==================== */}
+        {activeTab === "papertrading" && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+            {/* Left Order Execution Column */}
+            <div className={`p-6 rounded-2xl border flex flex-col space-y-5 ${themeClasses.card}`}>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Place Virtual Order</h3>
+                <p className="text-2xs text-slate-400">Trade Nifty 50 and watchlist stocks in real-time with zero risk.</p>
+              </div>
+
+              <div className="flex flex-col space-y-1 text-xs">
+                <label className="text-2xs text-slate-400 font-bold uppercase">Asset Selected</label>
+                <select 
+                  value={tradeTicker}
+                  onChange={(e) => {
+                    setTradeTicker(e.target.value);
+                    setTradeMessage("");
+                    setTradeError("");
+                  }}
+                  className={`border rounded-xl px-3 py-2.5 font-semibold ${themeClasses.input}`}
+                >
+                  {tickers.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* BUY / SELL Switch Toggle */}
+              <div className="flex p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+                <button
+                  onClick={() => setTradeAction("BUY")}
+                  className={`flex-1 text-center font-bold text-xs py-2 rounded-lg cursor-pointer transition-all ${
+                    tradeAction === "BUY" 
+                      ? "bg-[#007AFF] text-white shadow-sm" 
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                  }`}
+                >
+                  BUY ORDER
+                </button>
+                <button
+                  onClick={() => setTradeAction("SELL")}
+                  className={`flex-1 text-center font-bold text-xs py-2 rounded-lg cursor-pointer transition-all ${
+                    tradeAction === "SELL" 
+                      ? "bg-rose-500 text-white shadow-sm" 
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                  }`}
+                >
+                  SELL ORDER
+                </button>
+              </div>
+
+              <div className="flex flex-col space-y-1 text-xs">
+                <label className="text-2xs text-slate-400 font-bold uppercase">Shares Quantity</label>
+                <input 
+                  type="number"
+                  min="1"
+                  value={tradeShares}
+                  onChange={(e) => setTradeShares(Math.max(1, Number(e.target.value)))}
+                  className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
+                />
+              </div>
+
+              {/* Quick cost readout */}
+              {currentStockInfo && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-250 dark:border-slate-800 flex justify-between items-center text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <span>Estimated Total:</span>
+                  <span className="font-extrabold text-slate-850 dark:text-white font-mono">
+                    ₹{(tradeShares * (currentStockInfo.currentPrice || currentStockInfo.close || 0)).toLocaleString("en-IN")}
+                  </span>
+                </div>
+              )}
+
+              <button
+                onClick={() => submitPaperTrade(tradeTicker, tradeAction, tradeShares)}
+                disabled={paperLoading}
+                className={`w-full font-bold text-xs py-3 rounded-xl cursor-pointer text-white flex items-center justify-center space-x-2 transition-all ${
+                  tradeAction === "BUY" ? "bg-emerald-500 hover:bg-emerald-450 animate-pulse-slow" : "bg-rose-500 hover:bg-rose-450"
+                }`}
+              >
+                <span>Submit {tradeAction} Order</span>
+              </button>
+
+              {tradeMessage && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs rounded-xl font-semibold flex items-center space-x-2">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                  <span>{tradeMessage}</span>
+                </div>
+              )}
+              {tradeError && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs rounded-xl font-semibold flex items-center space-x-2">
+                  <span className="h-2 w-2 rounded-full bg-rose-500 flex-shrink-0"></span>
+                  <span>{tradeError}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Middle & Right Column */}
+            <div className="lg:col-span-2 flex flex-col space-y-6">
+              {/* Account summary banner */}
+              {paperPortfolio && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">Virtual Balance</span>
+                    <span className="text-base font-black text-slate-900 dark:text-white pt-1 font-mono">
+                      ₹{paperPortfolio.balance.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">Total Valuation</span>
+                    <span className="text-base font-black text-slate-900 dark:text-white pt-1 font-mono">
+                      ₹{paperPortfolio.total_value.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">Unrealized P&L</span>
+                    {(() => {
+                      const netPnl = paperPortfolio.total_value - 1000000;
+                      return (
+                        <span className={`text-base font-black pt-1 font-mono ${netPnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                          {netPnl >= 0 ? "+" : ""}₹{netPnl.toLocaleString("en-IN")}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <button
+                    onClick={resetPaperTrading}
+                    className="p-4 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 text-xs font-bold rounded-xl flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span>Reset Account</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Holdings positions card */}
+              <div className={`p-5 rounded-2xl border flex flex-col space-y-3 ${themeClasses.card}`}>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider border-b pb-2 border-slate-200 dark:border-slate-800">Active Positions</h4>
+                {paperPortfolio && paperPortfolio.holdings.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-2xs text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase">
+                          <th className="py-2.5">Stock</th>
+                          <th className="py-2.5">Shares</th>
+                          <th className="py-2.5">Buy Price</th>
+                          <th className="py-2.5">Current Price</th>
+                          <th className="py-2.5">Market Value</th>
+                          <th className="py-2.5 text-right">PnL (%)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paperPortfolio.holdings.map((h: any) => (
+                          <tr key={h.ticker} className="border-b border-slate-100 dark:border-slate-900/60 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-900/20">
+                            <td className="py-2.5 font-bold">{h.ticker}</td>
+                            <td className="py-2.5 font-mono">{h.shares}</td>
+                            <td className="py-2.5 font-mono text-slate-500">₹{h.average_buy_price}</td>
+                            <td className="py-2.5 font-mono text-slate-850 dark:text-slate-200">₹{h.current_price}</td>
+                            <td className="py-2.5 font-mono font-semibold">₹{h.market_value.toLocaleString("en-IN")}</td>
+                            <td className={`py-2.5 text-right font-black font-mono ${h.unrealized_pnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                              {h.unrealized_pnl >= 0 ? "+" : ""}₹{h.unrealized_pnl.toLocaleString("en-IN")} ({h.pnl_pct.toFixed(2)}%)
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-10 text-slate-500 text-xs">No active positions held. Place a buy order to open a simulator trade.</div>
+                )}
+              </div>
+
+              {/* Transactions log card */}
+              <div className={`p-5 rounded-2xl border flex flex-col space-y-3 ${themeClasses.card}`}>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider border-b pb-2 border-slate-200 dark:border-slate-800">Trade Ledger</h4>
+                {paperPortfolio && paperPortfolio.trades.length > 0 ? (
+                  <div className="overflow-x-auto max-h-[220px] overflow-y-auto">
+                    <table className="w-full text-[10px] text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase">
+                          <th className="py-2">Time</th>
+                          <th className="py-2">Ticker</th>
+                          <th className="py-2">Action</th>
+                          <th className="py-2">Price</th>
+                          <th className="py-2">Shares</th>
+                          <th className="py-2 text-right">Total Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paperPortfolio.trades.map((t: any) => (
+                          <tr key={t.id} className="border-b border-slate-100 dark:border-slate-900/60 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-900/20">
+                            <td className="py-2 font-mono text-slate-400">{t.timestamp}</td>
+                            <td className="py-2 font-bold">{t.ticker}</td>
+                            <td className="py-2">
+                              <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] ${
+                                t.action === "BUY" ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+                              }`}>
+                                {t.action}
+                              </span>
+                            </td>
+                            <td className="py-2 font-mono">₹{t.price}</td>
+                            <td className="py-2 font-mono">{t.shares}</td>
+                            <td className="py-2 text-right font-semibold font-mono">
+                              ₹{(t.shares * t.price).toLocaleString("en-IN")}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-slate-500 text-xs">No historical trades found.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== TAB 6: ALERTS CENTER ==================== */}
+        {activeTab === "alerts" && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+            {/* Left Column: Create Alert Card */}
+            <div className={`p-6 rounded-2xl border flex flex-col space-y-5 ${themeClasses.card}`}>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Create Price Alert</h3>
+                <p className="text-2xs text-slate-400">Get notified when stock prices trigger threshold limits.</p>
+              </div>
+
+              <div className="flex flex-col space-y-1 text-xs">
+                <label className="text-2xs text-slate-400 font-bold uppercase">Asset Selected</label>
+                <select 
+                  value={alertTicker}
+                  onChange={(e) => {
+                    setAlertTicker(e.target.value);
+                    setAlertMessage("");
+                  }}
+                  className={`border rounded-xl px-3 py-2.5 font-semibold ${themeClasses.input}`}
+                >
+                  {tickers.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col space-y-1 text-xs">
+                <label className="text-2xs text-slate-400 font-bold uppercase">Condition</label>
+                <select 
+                  value={alertCondition}
+                  onChange={(e) => setAlertCondition(e.target.value as any)}
+                  className={`border rounded-xl px-3 py-2.5 font-semibold ${themeClasses.input}`}
+                >
+                  <option value="ABOVE">ABOVE (₹)</option>
+                  <option value="BELOW">BELOW (₹)</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col space-y-1 text-xs">
+                <label className="text-2xs text-slate-400 font-bold uppercase">Trigger Price Value (₹)</label>
+                <input 
+                  type="number"
+                  placeholder="e.g. 2500"
+                  value={alertValue}
+                  onChange={(e) => setAlertValue(e.target.value)}
+                  className={`border rounded-xl px-3 py-2.5 ${themeClasses.input}`}
+                />
+              </div>
+
+              <button
+                onClick={() => createAlert(alertTicker, alertCondition, Number(alertValue))}
+                disabled={!alertValue || isNaN(Number(alertValue))}
+                className="bg-[#007AFF] hover:bg-blue-600 disabled:bg-slate-350 text-white font-bold text-xs py-3 rounded-xl flex items-center justify-center space-x-2 cursor-pointer shadow-sm transition-all"
+              >
+                <Bell className="h-4 w-4" />
+                <span>Establish Price Alert</span>
+              </button>
+
+              {alertMessage && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs rounded-xl font-semibold flex items-center space-x-2">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                  <span>{alertMessage}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: List Alerts */}
+            <div className="lg:col-span-2 flex flex-col space-y-6">
+              <div className={`p-5 rounded-2xl border flex flex-col space-y-3 ${themeClasses.card}`}>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider border-b pb-2 border-slate-200 dark:border-slate-800">Alert Registry</h4>
+                {alertsLoading ? (
+                  <div className="flex justify-center py-12">
+                    <RefreshCw className="h-6 w-6 animate-spin text-indigo-500" />
+                  </div>
+                ) : alertsList.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-2xs text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase">
+                          <th className="py-2.5">Asset</th>
+                          <th className="py-2.5">Trigger Condition</th>
+                          <th className="py-2.5">Price Threshold</th>
+                          <th className="py-2.5">Status</th>
+                          <th className="py-2.5">Established At</th>
+                          <th className="py-2.5 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {alertsList.map((a: any) => (
+                          <tr key={a.id} className="border-b border-slate-100 dark:border-slate-900/60 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-900/20">
+                            <td className="py-2.5 font-bold">{a.ticker}</td>
+                            <td className="py-2.5 font-semibold text-indigo-500">{a.condition_type}</td>
+                            <td className="py-2.5 font-mono font-bold">₹{a.value.toLocaleString("en-IN")}</td>
+                            <td className="py-2.5">
+                              {a.is_triggered ? (
+                                <span className="inline-flex items-center space-x-1 bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 rounded-full text-3xs font-extrabold text-rose-500">
+                                  <span>TRIGGERED</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center space-x-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full text-3xs font-extrabold text-emerald-600 dark:text-emerald-400">
+                                  <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                                  <span>MONITORING</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 font-mono text-slate-400">{a.created_at}</td>
+                            <td className="py-2.5 text-right">
+                              <button
+                                onClick={() => deleteAlert(a.id)}
+                                className="bg-slate-100 dark:bg-slate-900 hover:bg-rose-500/10 hover:text-rose-500 border border-slate-200 dark:border-slate-800 p-1.5 rounded-lg transition-all cursor-pointer"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-slate-500 text-xs">No active price alerts established. Set target price threshold above.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
       </main>
 
       <footer className={`border-t py-6 px-6 text-center text-3xs space-y-2 mt-auto ${
@@ -3378,7 +4266,10 @@ export default function Dashboard() {
         {[
           { id: "research", label: "Analyst", icon: Activity },
           { id: "optimizer", label: "Optimizer", icon: PieIcon },
-          { id: "finance", label: "Planner", icon: Landmark }
+          { id: "finance", label: "Planner", icon: Landmark },
+          { id: "backtesting", label: "Backtest", icon: History },
+          { id: "papertrading", label: "Paper", icon: Wallet },
+          { id: "alerts", label: "Alerts", icon: Bell }
         ].map(module => {
           const isActive = activeTab === module.id;
           const Icon = module.icon;
@@ -3386,10 +4277,10 @@ export default function Dashboard() {
             <button 
               key={module.id}
               onClick={() => {
-                setActiveTab(module.id as "research" | "optimizer" | "finance");
+                setActiveTab(module.id as any);
                 if (module.id === "research") setActiveWorkspaceTab("Overview");
               }}
-              className={`flex flex-col items-center space-y-1 py-1 px-3 rounded-xl transition-all ${
+              className={`flex flex-col items-center space-y-1 py-1 px-1.5 rounded-xl transition-all ${
                 isActive 
                   ? theme === "light" 
                     ? "text-indigo-600 font-bold bg-indigo-50" 
@@ -3399,8 +4290,8 @@ export default function Dashboard() {
                     : "text-slate-400 hover:text-white"
               }`}
             >
-              <Icon className="h-5 w-5" />
-              <span className="text-[10px] font-semibold">{module.label}</span>
+              <Icon className="h-4.5 w-4.5" />
+              <span className="text-[9px] font-semibold">{module.label}</span>
             </button>
           );
         })}

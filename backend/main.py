@@ -109,7 +109,7 @@ class SIPCompareRequest(BaseModel):
 
 # Import Database & Core Modules
 from backend.db.session import get_db, SessionLocal
-from backend.db.models import init_db, StockCache, Watchlist, Expense, OptimizedPortfolio, StockInfoCache, StockHistoryCache, ResearchReportCache
+from backend.db.models import init_db, StockCache, Watchlist, Expense, OptimizedPortfolio, StockInfoCache, StockHistoryCache, ResearchReportCache, PaperTrade, PaperBalance, AlertSetting
 from backend.data.fetcher import fetch_stock_data, DEFAULT_TICKERS
 from backend.data.indicators import calculate_technical_indicators
 from backend.data.optimizer import optimize_portfolio
@@ -792,6 +792,9 @@ def get_cached_stock_info(ticker: str, db: Session) -> Dict[str, Any]:
         # Save to DB cache ONLY if we got a valid price (currentPrice > 0.0)
         if current_price > 0.0:
             try:
+                # Evaluate and trigger any active alerts for this stock
+                check_and_trigger_alerts(ticker, current_price, db)
+                
                 # Prepare data to save (exclude news list from info_json)
                 info_json_str = json.dumps(info_data)
                 news_json_str = json.dumps(news_list)
@@ -1221,9 +1224,10 @@ def get_stock_dashboard(ticker: str, period: str = "1y", db: Session = Depends(g
 # ==================== PORTFOLIO OPTIMIZATION ====================
 
 @app.post("/api/portfolio/optimize")
-def post_optimize_portfolio(tickers: List[str], db: Session = Depends(get_db)):
+def post_optimize_portfolio(tickers: List[str], use_ai_views: bool = Query(False), db: Session = Depends(get_db)):
     """
-    Executes Modern Portfolio Theory (MPT) optimization on the list of tickers.
+    Executes Modern Portfolio Theory (MPT) optimization on the list of tickers,
+    optionally tilting expected returns by ±8% based on the active AI recommendation.
     """
     if len(tickers) < 2:
         raise HTTPException(status_code=400, detail="Optimization requires at least two stock tickers.")
@@ -1240,8 +1244,30 @@ def post_optimize_portfolio(tickers: List[str], db: Session = Depends(get_db)):
         
     combined_df = pd.concat(all_data, ignore_index=True)
     
+    ai_views = None
+    if use_ai_views:
+        ai_views = {}
+        for ticker in tickers:
+            try:
+                rec_res = get_stock_recommendation(ticker, db)
+                rec = rec_res.get("recommendation", "HOLD")
+                
+                tilt = 0.0
+                if rec == "STRONG BUY":
+                    tilt = 0.08
+                elif rec == "BUY":
+                    tilt = 0.04
+                elif rec == "STRONG SELL":
+                    tilt = -0.08
+                elif rec == "SELL":
+                    tilt = -0.04
+                
+                ai_views[ticker] = tilt
+            except Exception as e:
+                logger.warning(f"Could not compute recommendation views for {ticker}: {e}")
+    
     try:
-        results = optimize_portfolio(combined_df)
+        results = optimize_portfolio(combined_df, ai_views=ai_views)
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating portfolio optimization: {str(e)}")
@@ -1788,3 +1814,450 @@ def get_mutual_funds_analysis(db: Session = Depends(get_db)):
             "funds": fallback_results,
             "chart_data": fallback_chart_series
         }
+
+
+# ==================== STRATEGY BACKTESTING ====================
+
+@app.get("/api/stock/{ticker}/backtest")
+def backtest_strategy(ticker: str, period: str = "1y", db: Session = Depends(get_db)):
+    ticker = ticker.strip().upper()
+    try:
+        history_list = get_stock_history(ticker, period=period, db=db)
+        if not history_list or len(history_list) < 30:
+            raise HTTPException(status_code=400, detail="Insufficient price history for backtesting.")
+            
+        df = pd.DataFrame(history_list)
+        if "RSI_14" not in df.columns or "MA_10" not in df.columns:
+            from backend.data.indicators import calculate_technical_indicators
+            df = calculate_technical_indicators(df)
+            
+        start_idx = min(50, len(df) - 1)
+        if start_idx >= len(df) - 5:
+            start_idx = 0
+            
+        initial_capital = 100000.0
+        cash = initial_capital
+        position = 0.0
+        trades = []
+        equity_curve = []
+        
+        base_price = safe_float(df.iloc[start_idx].get("Close"), 1.0)
+        
+        for i in range(start_idx, len(df)):
+            row = df.iloc[i]
+            date_str = str(row.get("Date"))
+            close_price = safe_float(row.get("Close"), 0.0)
+            if close_price <= 0:
+                continue
+                
+            rsi = safe_float(row.get("RSI_14"), 50.0)
+            ma10 = safe_float(row.get("MA_10"), close_price)
+            ma50 = safe_float(row.get("MA_50"), close_price)
+            macd_line = safe_float(row.get("MACD_Line"), 0.0)
+            macd_sig = safe_float(row.get("MACD_Signal"), 0.0)
+            
+            score = 0
+            if rsi < 35: score += 1
+            elif rsi > 65: score -= 1
+            
+            if close_price > ma10 and close_price > ma50: score += 1
+            elif close_price < ma10 and close_price < ma50: score -= 1
+            
+            if macd_line > macd_sig: score += 1
+            elif macd_line < macd_sig: score -= 1
+            
+            signal = "HOLD"
+            if score >= 1:
+                signal = "BUY"
+            elif score <= -1:
+                signal = "SELL"
+                
+            if signal == "BUY" and position == 0:
+                position = cash / close_price
+                cash = 0.0
+                trades.append({
+                    "date": date_str,
+                    "action": "BUY",
+                    "price": round(close_price, 2),
+                    "shares": round(position, 2),
+                    "cash": round(cash, 2),
+                    "equity": round(position * close_price, 2)
+                })
+            elif signal == "SELL" and position > 0:
+                cash = position * close_price
+                position = 0.0
+                trades.append({
+                    "date": date_str,
+                    "action": "SELL",
+                    "price": round(close_price, 2),
+                    "shares": 0.0,
+                    "cash": round(cash, 2),
+                    "equity": round(cash, 2)
+                })
+                
+            current_equity = cash + (position * close_price)
+            benchmark_val = (close_price / base_price) * initial_capital
+            
+            equity_curve.append({
+                "Date": date_str,
+                "Strategy": round(current_equity, 2),
+                "Benchmark": round(benchmark_val, 2)
+            })
+            
+        final_equity = cash + (position * safe_float(df.iloc[-1].get("Close"), 0.0))
+        strategy_returns = ((final_equity - initial_capital) / initial_capital) * 100
+        
+        final_price = safe_float(df.iloc[-1].get("Close"), 1.0)
+        benchmark_returns = ((final_price - base_price) / base_price) * 100
+        
+        eq_df = pd.DataFrame(equity_curve)
+        eq_df["Daily_Return"] = eq_df["Strategy"].pct_change()
+        daily_std = eq_df["Daily_Return"].std()
+        
+        rf_daily = 0.06 / 252
+        mean_excess_return = eq_df["Daily_Return"].mean() - rf_daily
+        if daily_std > 0:
+            sharpe_ratio = (mean_excess_return / daily_std) * (252 ** 0.5)
+        else:
+            sharpe_ratio = 0.0
+            
+        eq_df["Peak"] = eq_df["Strategy"].cummax()
+        eq_df["Drawdown"] = (eq_df["Strategy"] - eq_df["Peak"]) / eq_df["Peak"] * 100
+        max_drawdown = eq_df["Drawdown"].min()
+        
+        win_count = 0
+        trade_pairs_count = 0
+        buy_trade = None
+        
+        for t in trades:
+            if t["action"] == "BUY":
+                buy_trade = t
+            elif t["action"] == "SELL" and buy_trade is not None:
+                trade_pairs_count += 1
+                if t["price"] > buy_trade["price"]:
+                    win_count += 1
+                buy_trade = None
+                
+        win_rate = (win_count / trade_pairs_count * 100) if trade_pairs_count > 0 else 0.0
+        
+        return {
+            "strategy_returns": round(strategy_returns, 2),
+            "benchmark_returns": round(benchmark_returns, 2),
+            "sharpe_ratio": round(sharpe_ratio, 2),
+            "win_rate": round(win_rate, 2),
+            "max_drawdown": round(max_drawdown, 2),
+            "equity_curve": equity_curve,
+            "trades": trades
+        }
+    except Exception as e:
+        logger.exception(f"Error running backtest for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=f"Backtesting failed: {str(e)}")
+
+
+# ==================== PAPER TRADING SIMULATOR ====================
+
+class PaperTradeRequest(BaseModel):
+    ticker: str
+    action: str
+    shares: float
+
+@app.get("/api/paper/portfolio")
+def get_paper_portfolio(db: Session = Depends(get_db)):
+    try:
+        balance_rec = db.query(PaperBalance).first()
+        if not balance_rec:
+            balance_rec = PaperBalance(balance=1000000.0)
+            db.add(balance_rec)
+            db.commit()
+            db.refresh(balance_rec)
+            
+        trades = db.query(PaperTrade).order_by(PaperTrade.timestamp.desc()).all()
+        
+        holdings = {}
+        # Order trades chronologically to compute cost basis
+        chrono_trades = sorted(trades, key=lambda x: x.timestamp)
+        for t in chrono_trades:
+            ticker = t.ticker
+            if ticker not in holdings:
+                holdings[ticker] = {"shares": 0.0, "average_buy_price": 0.0}
+            
+            h = holdings[ticker]
+            if t.action == "BUY":
+                new_shares = h["shares"] + t.shares
+                if new_shares > 0:
+                    h["average_buy_price"] = (h["shares"] * h["average_buy_price"] + t.shares * t.price) / new_shares
+                h["shares"] = new_shares
+            elif t.action == "SELL":
+                new_shares = max(0.0, h["shares"] - t.shares)
+                if new_shares == 0.0:
+                    h["average_buy_price"] = 0.0
+                h["shares"] = new_shares
+                
+        holdings_list = []
+        total_holdings_value = 0.0
+        
+        for ticker, h in holdings.items():
+            if h["shares"] > 0:
+                info = get_cached_stock_info(ticker, db)
+                current_price = safe_float(info.get("currentPrice"), 0.0)
+                if current_price <= 0:
+                    hist = db.query(StockHistoryCache).filter(StockHistoryCache.ticker == ticker).first()
+                    if hist:
+                        try:
+                            hist_data = json.loads(hist.history_json)
+                            if hist_data:
+                                current_price = safe_float(hist_data[-1].get("Close"), 0.0)
+                        except Exception:
+                            pass
+                            
+                market_value = h["shares"] * current_price
+                cost_basis = h["shares"] * h["average_buy_price"]
+                unrealized_pnl = market_value - cost_basis
+                total_holdings_value += market_value
+                
+                holdings_list.append({
+                    "ticker": ticker,
+                    "shares": round(h["shares"], 2),
+                    "average_buy_price": round(h["average_buy_price"], 2),
+                    "current_price": round(current_price, 2),
+                    "market_value": round(market_value, 2),
+                    "unrealized_pnl": round(unrealized_pnl, 2),
+                    "pnl_pct": round((unrealized_pnl / cost_basis * 100), 2) if cost_basis > 0 else 0.0
+                })
+                
+        return {
+            "balance": round(balance_rec.balance, 2),
+            "holdings": holdings_list,
+            "total_value": round(balance_rec.balance + total_holdings_value, 2),
+            "trades": [
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "action": t.action,
+                    "shares": round(t.shares, 2),
+                    "price": round(t.price, 2),
+                    "timestamp": t.timestamp
+                } for t in trades
+            ]
+        }
+    except Exception as e:
+        logger.exception(f"Error loading paper trading portfolio: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load portfolio: {str(e)}")
+
+@app.post("/api/paper/trade")
+def execute_paper_trade(req: PaperTradeRequest, db: Session = Depends(get_db)):
+    ticker = req.ticker.strip().upper()
+    action = req.action.strip().upper()
+    shares = safe_float(req.shares, 0.0)
+    
+    if shares <= 0:
+        raise HTTPException(status_code=400, detail="Number of shares must be greater than zero.")
+    if action not in ["BUY", "SELL"]:
+        raise HTTPException(status_code=400, detail="Action must be BUY or SELL.")
+        
+    info = get_cached_stock_info(ticker, db)
+    current_price = safe_float(info.get("currentPrice"), 0.0)
+    if current_price <= 0:
+        raise HTTPException(status_code=400, detail=f"Cannot fetch current price for {ticker}. Trade failed.")
+        
+    balance_rec = db.query(PaperBalance).first()
+    if not balance_rec:
+        balance_rec = PaperBalance(balance=1000000.0)
+        db.add(balance_rec)
+        db.commit()
+        db.refresh(balance_rec)
+        
+    total_cost = shares * current_price
+    
+    if action == "BUY":
+        if balance_rec.balance < total_cost:
+            raise HTTPException(status_code=400, detail=f"Insufficient balance. Required: {round(total_cost, 2)}, Available: {round(balance_rec.balance, 2)}")
+        balance_rec.balance -= total_cost
+    else:
+        trades = db.query(PaperTrade).filter(PaperTrade.ticker == ticker).all()
+        shares_held = 0.0
+        for t in trades:
+            if t.action == "BUY":
+                shares_held += t.shares
+            elif t.action == "SELL":
+                shares_held -= t.shares
+                
+        if shares_held < shares:
+            raise HTTPException(status_code=400, detail=f"Insufficient shares. You hold {round(shares_held, 2)} shares, trying to sell {round(shares, 2)}")
+        balance_rec.balance += total_cost
+        
+    trade = PaperTrade(
+        ticker=ticker,
+        action=action,
+        shares=shares,
+        price=current_price,
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    db.add(trade)
+    db.commit()
+    
+    return {
+        "message": f"Successfully executed {action} order of {shares} shares for {ticker} at {round(current_price, 2)}",
+        "balance": round(balance_rec.balance, 2)
+    }
+
+@app.post("/api/paper/reset")
+def reset_paper_trading(db: Session = Depends(get_db)):
+    try:
+        db.query(PaperTrade).delete()
+        balance_rec = db.query(PaperBalance).first()
+        if balance_rec:
+            balance_rec.balance = 1000000.0
+        else:
+            balance_rec = PaperBalance(balance=1000000.0)
+            db.add(balance_rec)
+        db.commit()
+        return {"message": "Paper trading account reset successfully.", "balance": 1000000.0}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to reset account: {str(e)}")
+
+
+# ==================== ALERT SETTINGS ====================
+
+class AlertCreateRequest(BaseModel):
+    ticker: str
+    condition_type: str
+    value: float
+
+def check_and_trigger_alerts(ticker: str, current_price: float, db: Session):
+    try:
+        alerts = db.query(AlertSetting).filter(
+            AlertSetting.ticker == ticker,
+            AlertSetting.is_triggered == 0
+        ).all()
+        
+        triggered_count = 0
+        for alert in alerts:
+            should_trigger = False
+            if alert.condition_type == "ABOVE" and current_price >= alert.value:
+                should_trigger = True
+            elif alert.condition_type == "BELOW" and current_price <= alert.value:
+                should_trigger = True
+                
+            if should_trigger:
+                alert.is_triggered = 1
+                triggered_count += 1
+                logger.info(f"ALERT TRIGGERED: {ticker} went {alert.condition_type} {alert.value} (Current: {current_price})")
+        if triggered_count > 0:
+            db.commit()
+    except Exception as e:
+        logger.error(f"Error checking alerts for {ticker}: {e}")
+
+@app.get("/api/alerts")
+def get_alerts(db: Session = Depends(get_db)):
+    alerts = db.query(AlertSetting).all()
+    return [
+        {
+            "id": a.id,
+            "ticker": a.ticker,
+            "condition_type": a.condition_type,
+            "value": round(a.value, 2),
+            "is_triggered": bool(a.is_triggered),
+            "created_at": a.created_at
+        } for a in alerts
+    ]
+
+@app.post("/api/alerts/create")
+def create_alert(req: AlertCreateRequest, db: Session = Depends(get_db)):
+    ticker = req.ticker.strip().upper()
+    cond = req.condition_type.strip().upper()
+    val = safe_float(req.value, 0.0)
+    
+    if cond not in ["ABOVE", "BELOW"]:
+        raise HTTPException(status_code=400, detail="Condition type must be ABOVE or BELOW.")
+        
+    alert = AlertSetting(
+        ticker=ticker,
+        condition_type=cond,
+        value=val,
+        is_triggered=0,
+        created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+    return {"message": f"Alert created for {ticker} when price goes {cond} {val}", "alert_id": alert.id}
+
+@app.delete("/api/alerts/{alert_id}")
+def delete_alert(alert_id: int, db: Session = Depends(get_db)):
+    alert = db.query(AlertSetting).filter(AlertSetting.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found.")
+    db.delete(alert)
+    db.commit()
+    return {"message": "Alert deleted successfully."}
+
+
+# ==================== ML MODEL RETRAINING ====================
+
+@app.post("/api/ml/retrain")
+def retrain_ml_model(db: Session = Depends(get_db)):
+    try:
+        from sklearn.ensemble import RandomForestRegressor
+        import joblib
+        
+        training_tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "SBIN.NS"]
+        dfs = []
+        
+        for t in training_tickers:
+            try:
+                history_list = get_stock_history(t, period="2y", db=db)
+                if history_list:
+                    temp_df = pd.DataFrame(history_list)
+                    if not temp_df.empty:
+                        if "MA_10" not in temp_df.columns:
+                            from backend.data.indicators import calculate_technical_indicators
+                            temp_df = calculate_technical_indicators(temp_df)
+                        dfs.append(temp_df)
+            except Exception as e:
+                logger.warning(f"Failed to fetch data for retraining ticker {t}: {e}")
+                
+        if not dfs:
+            raise HTTPException(status_code=400, detail="No training data could be collected from default tickers.")
+            
+        combined_df = pd.concat(dfs, ignore_index=True)
+        
+        numeric_cols = ["Open", "High", "Low", "Close", "Volume"]
+        for col in numeric_cols:
+            if col in combined_df.columns:
+                combined_df[col] = pd.to_numeric(combined_df[col], errors="coerce")
+                
+        combined_df["Daily_Return"] = combined_df.groupby("Stock")["Close"].pct_change()
+        combined_df["Volatility"] = combined_df.groupby("Stock")["Daily_Return"].rolling(10).std().reset_index(0, drop=True)
+        combined_df["Price_Range"] = combined_df["High"] - combined_df["Low"]
+        combined_df["Open_Close_Diff"] = combined_df["Open"] - combined_df["Close"]
+        
+        combined_df["Next_Close"] = combined_df.groupby("Stock")["Close"].shift(-1)
+        
+        feature_cols = ["Open", "High", "Low", "Volume", "MA_10", "MA_50", "Daily_Return", "Volatility", "Price_Range", "Open_Close_Diff"]
+        combined_df = combined_df.dropna(subset=feature_cols + ["Next_Close"])
+        
+        if len(combined_df) < 100:
+            raise HTTPException(status_code=400, detail=f"Insufficient clean samples for training. Samples: {len(combined_df)}")
+            
+        X = combined_df[feature_cols]
+        y = combined_df["Next_Close"]
+        
+        rf = RandomForestRegressor(n_estimators=100, random_state=42)
+        rf.fit(X, y)
+        
+        MODEL_PATH = os.path.join(BASE_DIR, "stock_prediction_model.pkl")
+        joblib.dump(rf, MODEL_PATH)
+        
+        globals()["ml_model"] = rf
+        logger.info("Successfully retrained and reloaded ML prediction model.")
+        
+        return {
+            "message": "Model retrained and reloaded successfully.",
+            "samples_trained": len(combined_df),
+            "features_used": feature_cols
+        }
+    except Exception as e:
+        logger.exception(f"Error during ML retraining: {e}")
+        raise HTTPException(status_code=500, detail=f"Retraining failed: {str(e)}")

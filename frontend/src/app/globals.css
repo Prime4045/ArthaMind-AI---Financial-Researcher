@@ -467,3 +467,52 @@ html:not(.dark) .marquee-container {
   border-bottom: 1px solid var(--border-light) !important;
 }
 
+/* Custom needle meter sweep & live spring-like wiggle animations */
+@keyframes gauge-sweep {
+  0% {
+    transform: rotate(-90deg);
+  }
+  70% {
+    transform: rotate(calc(var(--target-rotation) + 4deg));
+  }
+  85% {
+    transform: rotate(calc(var(--target-rotation) - 2deg));
+  }
+  100% {
+    transform: rotate(var(--target-rotation));
+  }
+}
+
+@keyframes gauge-wiggle {
+  0%, 100% {
+    transform: rotate(var(--target-rotation));
+  }
+  25% {
+    transform: rotate(calc(var(--target-rotation) + 0.6deg));
+  }
+  75% {
+    transform: rotate(calc(var(--target-rotation) - 0.6deg));
+  }
+}
+
+@keyframes gauge-scan {
+  0%, 100% {
+    transform: rotate(-80deg);
+  }
+  50% {
+    transform: rotate(80deg);
+  }
+}
+
+.gauge-needle-animate {
+  animation: gauge-sweep 1.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, 
+             gauge-wiggle 3s ease-in-out 1.4s infinite;
+  transform-origin: 50px 50px;
+}
+
+.gauge-needle-scanning {
+  animation: gauge-scan 2s ease-in-out infinite;
+  transform-origin: 50px 50px;
+}
+
+
