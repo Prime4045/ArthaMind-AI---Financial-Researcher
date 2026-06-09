@@ -1493,8 +1493,8 @@ export default function Dashboard() {
                 <div className={`p-4 md:p-6 ${themeClasses.card}`}>
                   
                   {/* Workspace Navigation Tabs */}
-                  <div className="flex items-center justify-between border-b pb-4 mb-5 border-slate-200 dark:border-slate-800/80">
-                    <div className="flex text-xs md:text-sm font-semibold overflow-x-auto md:overflow-x-visible scrollbar-none flex-nowrap md:flex-wrap gap-x-4 md:gap-x-6 gap-y-1 pb-1 w-full">
+                  <div className="border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
+                    <div className="flex text-xs md:text-sm font-semibold overflow-x-auto md:overflow-x-visible scrollbar-none flex-nowrap md:flex-wrap gap-x-4 md:gap-x-6 gap-y-2 w-full overflow-y-hidden">
                       {[
                         { id: "Overview", label: "Overview & Charts" },
                         { id: "Comparator", label: "Stock Comparator" },
@@ -1505,7 +1505,7 @@ export default function Dashboard() {
                         <button
                           key={tab.id}
                           onClick={() => setActiveWorkspaceTab(tab.id)}
-                          className={`transition-all pb-4 -mb-5 relative whitespace-nowrap cursor-pointer ${
+                          className={`transition-all pb-3 relative whitespace-nowrap cursor-pointer ${
                             activeWorkspaceTab === tab.id
                               ? "text-indigo-500 font-bold"
                               : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
@@ -1595,7 +1595,7 @@ export default function Dashboard() {
                                       </defs>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
-                                      <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} />
+                                      <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? v.toFixed(2) : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Area type="monotone" dataKey="Close" stroke="#6366F1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorClose)" name="Close Price" />
                                     </AreaChart>
@@ -1607,7 +1607,7 @@ export default function Dashboard() {
                                     <LineChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
-                                      <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} />
+                                      <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? v.toFixed(2) : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
                                       <Line type="monotone" dataKey="Close" stroke="#6366F1" strokeWidth={2.5} dot={false} name="Closing Price" />
@@ -1622,7 +1622,7 @@ export default function Dashboard() {
                                     <LineChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
-                                      <YAxis domain={[0, 100]} stroke="#64748B" fontSize={8} />
+                                      <YAxis domain={[0, 100]} stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? v.toFixed(2) : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
                                       <ReferenceLine y={70} stroke="#EF4444" strokeDasharray="3 3" label={{ value: "Overbought (70)", fill: "#EF4444", fontSize: 7, position: "insideTopLeft" }} />
@@ -1637,7 +1637,7 @@ export default function Dashboard() {
                                     <ComposedChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
-                                      <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} />
+                                      <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? v.toFixed(2) : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
                                       <Bar dataKey="MACD_Diff" name="MACD Histogram">
@@ -1999,7 +1999,7 @@ export default function Dashboard() {
                                     ₹{(currentStock.currentPrice * (predictionHorizon === "tomorrow" ? 1.012 : predictionHorizon === "7days" ? 1.034 : 1.075)).toFixed(2)}
                                   </span>
                                   <span className="text-2xs font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg flex items-center">
-                                    ▲ {(predictionHorizon === "tomorrow" ? 1.2 : predictionHorizon === "7days" ? 3.4 : 7.5).toFixed(1)}% Estimated Upside
+                                    ▲ {(predictionHorizon === "tomorrow" ? 1.2 : predictionHorizon === "7days" ? 3.4 : 7.5).toFixed(2)}% Estimated Upside
                                   </span>
                                 </div>
                                 <p className="text-3xs text-slate-400 flex items-center gap-1.5 mt-2 bg-slate-100 dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-800 rounded-lg">
@@ -2149,7 +2149,7 @@ export default function Dashboard() {
                                     <LineChart data={compareData.normalized_history} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                       <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
-                                      <YAxis unit="%" stroke="#64748B" fontSize={8} />
+                                      <YAxis unit="%" stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? `${v.toFixed(2)}%` : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)}%` : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
                                       <Line type="monotone" dataKey="return_a" stroke="#6366F1" strokeWidth={2} dot={false} name={compareTickerA} />
@@ -2469,7 +2469,7 @@ export default function Dashboard() {
                           ₹{(currentStock.currentPrice * (predictionHorizon === "tomorrow" ? 1.012 : predictionHorizon === "7days" ? 1.034 : 1.075)).toFixed(2)}
                         </span>
                         <span className="text-2xs font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
-                          ▲ {(predictionHorizon === "tomorrow" ? 1.2 : predictionHorizon === "7days" ? 3.4 : 7.5).toFixed(1)}% Upside
+                          ▲ {(predictionHorizon === "tomorrow" ? 1.2 : predictionHorizon === "7days" ? 3.4 : 7.5).toFixed(2)}% Upside
                         </span>
                       </div>
                       <p className="text-3xs text-slate-400 flex items-center gap-1.5 mt-2 bg-slate-50 dark:bg-slate-950 p-2.5 border border-slate-200 dark:border-slate-800 rounded-lg">
@@ -2618,7 +2618,7 @@ export default function Dashboard() {
                           <div key={ticker} className="flex flex-col space-y-1">
                             <div className="flex justify-between text-2xs font-semibold text-slate-600 dark:text-slate-300">
                               <span>{ticker}</span>
-                              <span>{(weight * 100).toFixed(1)}%</span>
+                              <span>{(weight * 100).toFixed(2)}%</span>
                             </div>
                             <div className="w-full bg-slate-100 dark:bg-slate-950 rounded-full h-2">
                               <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${weight * 100}%` }}></div>
@@ -2652,8 +2652,8 @@ export default function Dashboard() {
                         <ResponsiveContainer width="100%" height={240} minWidth={0}>
                           <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
                             <CartesianGrid stroke={theme === "light" ? "#F1F5F9" : "#1E293B"} />
-                            <XAxis type="number" dataKey="volatility" name="Volatility" unit="" label={{ value: "Volatility (Risk)", position: "bottom", fill: "#94A3B8", fontSize: 10 }} stroke="#94A3B8" fontSize={8} />
-                            <YAxis type="number" dataKey="return" name="Return" unit="" label={{ value: "Return", angle: -90, position: "insideLeft", fill: "#94A3B8", fontSize: 10 }} stroke="#94A3B8" fontSize={8} />
+                            <XAxis type="number" dataKey="volatility" name="Volatility" unit="" label={{ value: "Volatility (Risk)", position: "bottom", fill: "#94A3B8", fontSize: 10 }} stroke="#94A3B8" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? `${v.toFixed(2)}%` : v} />
+                            <YAxis type="number" dataKey="return" name="Return" unit="" label={{ value: "Return", angle: -90, position: "insideLeft", fill: "#94A3B8", fontSize: 10 }} stroke="#94A3B8" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? `${v.toFixed(2)}%` : v} />
                             <Tooltip cursor={{ strokeDasharray: "3 3" }} formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)}%` : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0F172A", border: "1px solid #E2E8F0" }} />
                             <Scatter name="Portfolios" data={optResults.frontier_points.map((p: any) => ({ ...p, return: Number(p.return) * 100, volatility: Number(p.volatility) * 100 }))} fill="#10B981" line={false} shape="circle" fillOpacity={0.6} />
                           </ScatterChart>
@@ -2712,8 +2712,8 @@ export default function Dashboard() {
           <div className="col-span-1 lg:col-span-3 flex flex-col space-y-6">
             
             {/* Sub-tab navigation */}
-            <div className="flex items-center justify-between border-b pb-4 mb-5 border-slate-200 dark:border-slate-800/80">
-              <div className="flex text-xs md:text-sm font-semibold overflow-x-auto md:overflow-x-visible scrollbar-none flex-nowrap md:flex-wrap gap-x-4 md:gap-x-6 gap-y-1 pb-1 w-full">
+            <div className="border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
+              <div className="flex text-xs md:text-sm font-semibold overflow-x-auto md:overflow-x-visible scrollbar-none flex-nowrap md:flex-wrap gap-x-4 md:gap-x-6 gap-y-2 w-full overflow-y-hidden">
                 {[
                   { id: "sip", label: "Advanced SIP Planner" },
                   { id: "compare_sip", label: "Compare SIPs" },
@@ -2723,10 +2723,10 @@ export default function Dashboard() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveFinanceTab(tab.id as any)}
-                    className={`transition-all pb-4 -mb-5 relative whitespace-nowrap cursor-pointer ${
+                    className={`transition-all pb-3 relative whitespace-nowrap cursor-pointer ${
                       activeFinanceTab === tab.id
                         ? "text-indigo-500 font-bold"
-                        : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                     }`}
                   >
                     {tab.label}
@@ -3256,11 +3256,11 @@ export default function Dashboard() {
                               <div className="grid grid-cols-3 gap-1.5 text-center text-3xs">
                                 <div>
                                   <span className="text-slate-500 dark:text-slate-400 block uppercase font-bold">1Y Return</span>
-                                  <span className="font-bold text-emerald-500 text-[11px] mt-0.5 block">+{fund.return_1y.toFixed(1)}%</span>
+                                  <span className="font-bold text-emerald-500 text-[11px] mt-0.5 block">+{fund.return_1y.toFixed(2)}%</span>
                                 </div>
                                 <div>
                                   <span className="text-slate-500 dark:text-slate-400 block uppercase font-bold">Risk (Vol)</span>
-                                  <span className="font-bold text-rose-450 dark:text-rose-400 text-[11px] mt-0.5 block">{fund.volatility.toFixed(1)}%</span>
+                                  <span className="font-bold text-rose-450 dark:text-rose-400 text-[11px] mt-0.5 block">{fund.volatility.toFixed(2)}%</span>
                                 </div>
                                 <div>
                                   <span className="text-slate-500 dark:text-slate-400 block uppercase font-bold">Sharpe</span>
@@ -3268,7 +3268,7 @@ export default function Dashboard() {
                                 </div>
                               </div>
                               <div className="flex justify-between text-3xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 p-2 border border-slate-200 dark:border-slate-850 rounded-lg">
-                                <span>AUM size: <b>₹{(fund.aum / 1e7).toFixed(1)} Cr</b></span>
+                                <span>AUM size: <b>₹{(fund.aum / 1e7).toFixed(2)} Cr</b></span>
                                 <span className="text-amber-500 dark:text-amber-400 font-bold">★ {fund.morningstar_rating}/5</span>
                               </div>
                             </div>
@@ -3286,7 +3286,7 @@ export default function Dashboard() {
                                 <LineChart data={mfData.chart_data} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                   <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
                                   <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
-                                  <YAxis unit="%" stroke="#64748B" fontSize={8} />
+                                  <YAxis unit="%" stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? `${v.toFixed(2)}%` : v} />
                                   <Tooltip formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)}%` : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                   <Legend wrapperStyle={{ fontSize: 9 }} />
                                   <Line type="monotone" dataKey="Large Cap" stroke="#3B82F6" strokeWidth={1.5} dot={false} />
@@ -3301,22 +3301,22 @@ export default function Dashboard() {
                         </div>
 
                         {/* Advisor Risk assessment card */}
-                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-5 text-xs text-slate-700 dark:text-slate-200 space-y-3">
-                          <h5 className="font-bold text-slate-800 dark:text-white flex items-center space-x-2">
-                            <Cpu className="h-4.5 w-4.5 text-indigo-400" />
-                            <span>AI Quant Advisor Consensus</span>
+                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-5 text-xs text-slate-900 dark:text-white space-y-3">
+                          <h5 className="font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                            <Cpu className="h-4.5 w-4.5 text-indigo-500 dark:text-indigo-400" />
+                            <span className="text-slate-900 dark:text-white">AI Quant Advisor Consensus</span>
                           </h5>
-                          <p className="leading-relaxed">
+                          <p className="leading-relaxed text-slate-900 dark:text-white">
                             Based on live Morningstar ratings and Sharpe Ratio computations, the following allocations are recommended:
                           </p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-3xs pt-1.5 leading-relaxed text-slate-600 dark:text-slate-300">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-3xs pt-1.5 leading-relaxed text-slate-900 dark:text-white">
                             <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
                               <span className="font-bold text-slate-900 dark:text-white uppercase block mb-1">Risk-Averse Investors</span>
-                              Mirae Asset Large Cap or ICICI Hybrid are recommended, offering a moderate volatility profile with strong Sharpe indicators (&gt; 1.2x).
+                              <span className="font-semibold text-blue-600 dark:text-blue-400">Mirae Asset Large Cap</span> or <span className="font-semibold text-emerald-600 dark:text-emerald-400">ICICI Hybrid</span> are recommended, offering a moderate volatility profile with strong Sharpe indicators (<span className="font-semibold text-amber-600 dark:text-amber-400">&gt; 1.2x</span>).
                             </div>
                             <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
                               <span className="font-bold text-slate-900 dark:text-white uppercase block mb-1">Growth Seekers</span>
-                              Nippon India Small Cap or HDFC Mid-Cap have yielded over 25% returns in the last 1 year, suitable for a 5+ year investment horizon.
+                              <span className="font-semibold text-rose-600 dark:text-rose-400">Nippon India Small Cap</span> or <span className="font-semibold text-amber-600 dark:text-amber-400">HDFC Mid-Cap</span> have yielded over <span className="font-semibold text-emerald-600 dark:text-emerald-400">25% returns</span> in the last <span className="font-semibold text-blue-600 dark:text-blue-400">1 year</span>, suitable for a <span className="font-semibold text-indigo-600 dark:text-indigo-400">5+ year</span> investment horizon.
                             </div>
                           </div>
                         </div>
