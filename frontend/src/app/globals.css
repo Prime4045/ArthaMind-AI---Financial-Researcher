@@ -106,60 +106,136 @@ body {
   animation-play-state: paused;
 }
 
-/* Premium Light Theme Readability & Border Adjustments */
+/* Premium Light Theme Readability & Border Adjustments (Bloomberg/TradingView Inspired) */
 html:not(.dark) {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f5f7fa;
+  --foreground: #1e1e1e;
 }
 
-/* Force high contrast black/dark slate text in light theme for readability */
+html:not(.dark) body {
+  background: linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%) no-repeat fixed !important;
+  color: #1e1e1e !important;
+}
+
+/* Light Card Styling - Layered Whites with distinct border & shadow */
+html:not(.dark) .glass-card {
+  background: #ffffff !important;
+  border: 1px solid #d0d7e2 !important;
+  box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.06) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+html:not(.dark) .glass-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0px 6px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Input elements - 6px corners, light border (#D0D7E2), blue tint on hover */
+html:not(.dark) input,
+html:not(.dark) select,
+html:not(.dark) textarea {
+  background: #ffffff !important;
+  border: 1px solid #d0d7e2 !important;
+  color: #1e1e1e !important;
+  border-radius: 6px !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+html:not(.dark) input:hover,
+html:not(.dark) select:hover,
+html:not(.dark) textarea:hover {
+  border-color: #007aff !important;
+  background: rgba(0, 122, 255, 0.01) !important;
+}
+
+html:not(.dark) input:focus,
+html:not(.dark) select:focus,
+html:not(.dark) textarea:focus {
+  border-color: #007aff !important;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15) !important;
+  background: #ffffff !important;
+  outline: none !important;
+}
+
+/* Navigation Bar - White Glass-morphism with blur and accent colors */
+html:not(.dark) header {
+  background: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(12px) !important;
+  border-bottom: 1px solid #d0d7e2 !important;
+  box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Tab Active Underline & Text Accent Blue (#007AFF) */
+html:not(.dark) .text-indigo-500 {
+  color: #007aff !important;
+}
+html:not(.dark) .bg-indigo-500 {
+  background-color: #007aff !important;
+}
+
+/* Muted buttons & pills zoom scale hover effects */
+html:not(.dark) button:not(.bg-emerald-500):not(.bg-rose-500) {
+  transition: all 0.2s ease-in-out !important;
+}
+html:not(.dark) button:not(.bg-emerald-500):not(.bg-rose-500):hover {
+  transform: scale(1.02) !important;
+}
+
+/* Typography contrast settings: Dark Gray #1E1E1E for headers, Medium Gray #4A4A4A for body */
+html:not(.dark) .text-slate-900,
+html:not(.dark) .text-slate-800,
+html:not(.dark) .text-gray-900,
+html:not(.dark) .text-gray-800,
+html:not(.dark) .text-white,
+html:not(.dark) h1,
+html:not(.dark) h2,
+html:not(.dark) h3,
+html:not(.dark) h4,
+html:not(.dark) h5,
+html:not(.dark) h6 {
+  color: #1e1e1e !important; /* headings */
+}
+
 html:not(.dark) .text-slate-400,
-html:not(.dark) .text-gray-400 {
-  color: #475569 !important; /* Slate-600: distinct and very visible */
-}
-
+html:not(.dark) .text-gray-400,
 html:not(.dark) .text-slate-500,
 html:not(.dark) .text-gray-500 {
-  color: #334155 !important; /* Slate-700: clear visible text */
+  color: #4a4a4a !important; /* body & labels */
 }
 
 html:not(.dark) .text-slate-600,
-html:not(.dark) .text-gray-600 {
-  color: #1e293b !important; /* Slate-800: deep readable dark gray */
-}
-
-html:not(.dark) .text-slate-700,
-html:not(.dark) .text-slate-800,
-html:not(.dark) .text-slate-900,
-html:not(.dark) .text-gray-700,
-html:not(.dark) .text-gray-800,
-html:not(.dark) .text-gray-900 {
-  color: #020617 !important; /* Slate-950/black: solid readable dark text */
-}
-
-/* Muted spans, descriptions, and labels inside light container */
+html:not(.dark) .text-gray-650,
+html:not(.dark) .text-gray-600,
 html:not(.dark) p,
 html:not(.dark) span:not(.text-emerald-500):not(.text-rose-500):not(.text-indigo-400):not(.text-blue-400):not(.text-emerald-600):not(.text-rose-600):not(.text-amber-500):not(.text-amber-600):not(.text-indigo-500):not(.text-blue-600):not(.text-indigo-600) {
-  color: #1e293b; /* crisp dark text for paragraphs and generic spans */
+  color: #4a4a4a !important; /* body text */
 }
 
-/* Clear, distinct borders for cards and sections in light theme */
+/* Borders mapping inside light container elements */
 html:not(.dark) .border,
 html:not(.dark) .border-slate-200,
-html:not(.dark) .border-slate-100 {
-  border-color: #cbd5e1 !important; /* Slate-300: clean distinct borders */
+html:not(.dark) .border-slate-100,
+html:not(.dark) .border-slate-300 {
+  border-color: #d0d7e2 !important; /* Light border gray */
 }
 
-/* Premium shadows for parent cards in light theme */
-html:not(.dark) .shadow-md,
-html:not(.dark) .shadow-lg {
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 10px -1px rgba(15, 23, 42, 0.03) !important;
+/* Recharts grid lines opacity and values color */
+html:not(.dark) .recharts-cartesian-grid-horizontal line,
+html:not(.dark) .recharts-cartesian-grid-vertical line {
+  stroke: #e9edf5 !important;
+  stroke-opacity: 1 !important; /* Solid visible but subtle cool neutral lines */
 }
 
-/* Dynamic chart stroke adjustments in light theme */
 html:not(.dark) .recharts-cartesian-axis-tick-value {
-  fill: #475569 !important;
+  fill: #4a4a4a !important;
 }
 html:not(.dark) .recharts-legend-item-text {
-  color: #1e293b !important;
+  color: #1e1e1e !important;
+}
+
+/* Divider lines inside cards */
+html:not(.dark) hr {
+  border-color: #e9edf5 !important;
+  border-width: 1px !important;
+  opacity: 1 !important;
 }

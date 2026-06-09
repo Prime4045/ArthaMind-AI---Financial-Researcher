@@ -1128,13 +1128,13 @@ export default function Dashboard() {
 
   // Color configurations based on theme
   const themeClasses = {
-    bg: theme === "light" ? "bg-slate-50" : "bg-[#070A13]",
-    card: theme === "light" ? "bg-white border border-slate-200 text-slate-900 shadow-sm rounded-2xl" : "glass-card border border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
-    textMuted: theme === "light" ? "text-slate-500 font-medium" : "text-slate-400",
-    textTitle: theme === "light" ? "text-slate-900 font-bold" : "text-white",
-    input: theme === "light" ? "bg-white border border-slate-200 text-slate-900 placeholder-slate-400" : "bg-[#0E1322] border border-slate-800 text-slate-100",
-    border: theme === "light" ? "border border-slate-200" : "border border-slate-800/70",
-    tableRowEven: theme === "light" ? "bg-slate-50 border-b border-slate-100" : "bg-[#0E1322]/40"
+    bg: theme === "light" ? "bg-[#FAFBFD]" : "bg-[#070A13]",
+    card: theme === "light" ? "bg-white border border-[#D0D7E2] text-[#1E1E1E] shadow-sm rounded-2xl transition-all duration-200 hover:shadow-md" : "glass-card border border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
+    textMuted: theme === "light" ? "text-[#4A4A4A] font-semibold" : "text-slate-400",
+    textTitle: theme === "light" ? "text-[#1E1E1E] font-black" : "text-white",
+    input: theme === "light" ? "bg-white border border-[#D0D7E2] text-[#1E1E1E] placeholder-slate-400 focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20 transition-all rounded-[6px]" : "bg-[#0E1322] border border-slate-800 text-slate-100 rounded-[6px]",
+    border: theme === "light" ? "border-[#D0D7E2]" : "border border-slate-800/70",
+    tableRowEven: theme === "light" ? "bg-[#F5F7FA] border-b border-[#E9EDF5]" : "bg-[#0E1322]/40"
   };
 
   return (
