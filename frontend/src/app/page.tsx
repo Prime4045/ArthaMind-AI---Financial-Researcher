@@ -460,6 +460,15 @@ export default function Dashboard() {
     }
   };
 
+  // Sync HTML root element class with theme state
+  useEffect(() => {
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [theme]);
+
   // Comparator Search debounces & effects
   useEffect(() => {
     if (activeWorkspaceTab === "Comparator") {
