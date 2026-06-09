@@ -1129,11 +1129,11 @@ export default function Dashboard() {
   // Color configurations based on theme
   const themeClasses = {
     bg: theme === "light" ? "bg-[#FAFBFD]" : "bg-[#070A13]",
-    card: theme === "light" ? "bg-white border border-[#D0D7E2] text-[#1E1E1E] shadow-sm rounded-2xl transition-all duration-200 hover:shadow-md" : "glass-card border border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
+    card: theme === "light" ? "bg-white border border-black text-[#1A1A1A] shadow-md rounded-2xl transition-all duration-200 hover:shadow-lg parent-card" : "glass-card border border-slate-800/85 text-slate-100 shadow-2xl rounded-2xl",
     textMuted: theme === "light" ? "text-[#4A4A4A] font-semibold" : "text-slate-400",
-    textTitle: theme === "light" ? "text-[#1E1E1E] font-black" : "text-white",
-    input: theme === "light" ? "bg-white border border-[#D0D7E2] text-[#1E1E1E] placeholder-slate-400 focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20 transition-all rounded-[6px]" : "bg-[#0E1322] border border-slate-800 text-slate-100 rounded-[6px]",
-    border: theme === "light" ? "border-[#D0D7E2]" : "border border-slate-800/70",
+    textTitle: theme === "light" ? "text-[#1A1A1A] font-black" : "text-white",
+    input: theme === "light" ? "bg-white border border-slate-450 text-[#1A1A1A] placeholder-slate-400 focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20 transition-all rounded-[6px]" : "bg-[#0E1322] border border-slate-800 text-slate-100 rounded-[6px]",
+    border: theme === "light" ? "border-slate-450" : "border border-slate-800/70",
     tableRowEven: theme === "light" ? "bg-[#F5F7FA] border-b border-[#E9EDF5]" : "bg-[#0E1322]/40"
   };
 
@@ -1141,18 +1141,18 @@ export default function Dashboard() {
     <div className={`flex-1 flex flex-col font-sans overflow-x-hidden min-h-screen pb-24 md:pb-0 transition-colors duration-300 ${theme === "dark" ? "dark" : ""} ${themeClasses.bg}`}>
       
       {/* Header NavBar */}
-      <header className="bg-[#0B0F19]/90 backdrop-blur-md text-white px-4 py-3 md:px-6 md:py-4 flex items-center justify-between border-b border-slate-800/60 sticky top-0 z-50">
+      <header className="bg-[#0B0F19]/90 backdrop-blur-md text-slate-900 dark:text-white px-4 py-3 md:px-6 md:py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/60 sticky top-0 z-50">
         <div className="flex items-center space-x-2">
           <div className="bg-gradient-to-tr from-indigo-600 to-cyan-500 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
             <Activity className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg md:text-xl font-bold tracking-tight text-white flex items-center">
+          <span className="text-lg md:text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center">
             Artha<span className="text-indigo-400 font-extrabold">Mind AI</span>
           </span>
         </div>
 
         {/* Clean, Functional Module Navigation */}
-        <nav className="hidden md:flex space-x-2 bg-slate-900/60 p-1 border border-slate-800 rounded-xl">
+        <nav className="hidden md:flex space-x-2 bg-slate-100 dark:bg-slate-900/60 p-1 border border-slate-200 dark:border-slate-800 rounded-xl">
           {[
             { id: "research", label: "Stock Analyst", icon: Activity },
             { id: "optimizer", label: "Portfolio Optimizer", icon: PieIcon },
@@ -1167,10 +1167,10 @@ export default function Dashboard() {
                   setActiveTab(module.id as "research" | "optimizer" | "finance");
                   if (module.id === "research") setActiveWorkspaceTab("Overview");
                 }}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   isActive 
                     ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" 
-                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -1185,19 +1185,19 @@ export default function Dashboard() {
           
           {/* Connection Status Badge */}
           {backendConnected === true && (
-            <span className="flex items-center space-x-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full text-3xs font-extrabold text-emerald-400">
+            <span className="flex items-center space-x-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full text-3xs font-extrabold text-emerald-600 dark:text-emerald-400">
               <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
               <span>API ONLINE</span>
             </span>
           )}
           {backendConnected === false && (
-            <span className="flex items-center space-x-1.5 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-full text-3xs font-extrabold text-rose-400">
+            <span className="flex items-center space-x-1.5 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-full text-3xs font-extrabold text-rose-500 dark:text-rose-450">
               <span className="h-1.5 w-1.5 bg-rose-500 rounded-full"></span>
               <span>API OFFLINE</span>
             </span>
           )}
           {backendConnected === null && (
-            <span className="flex items-center space-x-1.5 bg-slate-500/10 border border-slate-500/20 px-2.5 py-1 rounded-full text-3xs font-extrabold text-slate-400 animate-pulse">
+            <span className="flex items-center space-x-1.5 bg-slate-500/10 border border-slate-500/20 px-2.5 py-1 rounded-full text-3xs font-extrabold text-slate-500 dark:text-slate-400 animate-pulse">
               <span className="h-1.5 w-1.5 bg-slate-500 rounded-full"></span>
               <span>CONNECTING</span>
             </span>
@@ -1207,10 +1207,10 @@ export default function Dashboard() {
           <button 
             onClick={() => setTheme(theme === "light" ? "dark" : "light")}
             title="Toggle Theme"
-            className="p-2 rounded-lg hover:bg-slate-800 text-slate-300 transition-colors"
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-650 dark:text-slate-300 transition-colors cursor-pointer"
           >
             {theme === "light" ? (
-              <Moon className="h-5 w-5 text-slate-400" />
+              <Moon className="h-5 w-5 text-slate-600" />
             ) : (
               <Sun className="h-5 w-5 text-amber-400" />
             )}
@@ -1259,7 +1259,7 @@ export default function Dashboard() {
 
       {/* Sub-search section */}
       <section className="max-w-7xl w-full mx-auto px-4 md:px-6 pt-4 md:pt-6 relative z-45">
-        <form onSubmit={handleSearchSubmit} className={`p-3 md:p-4 rounded-xl border flex flex-col sm:flex-row items-stretch sm:items-center gap-3 ${themeClasses.card}`}>
+        <form onSubmit={handleSearchSubmit} className={`search-bar-form p-3 md:p-4 rounded-xl border flex flex-col sm:flex-row items-stretch sm:items-center gap-3 ${themeClasses.card}`}>
           <div ref={searchContainerRef} className="flex-1 relative">
             <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
             <input 
@@ -1271,7 +1271,7 @@ export default function Dashboard() {
               }}
               onFocus={() => setShowSuggestions(true)}
               placeholder="Enter stock name or symbol (e.g. TCS, RELIANCE, INFY)"
-              className={`pl-10 pr-4 py-3 text-sm rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-emerald-500 border ${themeClasses.input}`}
+              className={`search-bar-input pl-10 pr-4 py-3 text-sm rounded-lg w-full focus:outline-none border ${themeClasses.input}`}
             />
             {showSuggestions && searchResults.length > 0 && (
               <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-[#0E1322] border border-slate-200 dark:border-slate-800/80 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/40">
@@ -1301,7 +1301,7 @@ export default function Dashboard() {
           </div>
           <button 
             type="submit" 
-            className="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm px-6 py-2.5 md:px-8 md:py-3 rounded-lg transition-colors shadow-md shadow-emerald-500/20 w-full sm:w-auto"
+            className="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm px-6 py-2.5 md:px-8 md:py-3 rounded-lg transition-colors shadow-md shadow-emerald-500/20 w-full sm:w-auto cursor-pointer"
           >
             Search
           </button>
@@ -1311,16 +1311,16 @@ export default function Dashboard() {
       {/* Watchlist Quick Access Pills */}
       {tickers.length > 0 && (
         <section className="max-w-7xl w-full mx-auto px-4 md:px-6 pt-2">
-          <div className="flex items-center space-x-2 overflow-x-auto py-2 bg-slate-50 dark:bg-slate-950/20 px-4 rounded-xl border border-slate-200 dark:border-slate-800/80 scrollbar-none">
-            <span className="text-2xs font-extrabold text-slate-400 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap mr-1">Watchlist:</span>
+          <div className="watchlist-container flex items-center space-x-2 overflow-x-auto py-2 px-4 rounded-xl border scrollbar-none">
+            <span className="text-2xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap mr-1">Watchlist:</span>
             <div className="flex items-center space-x-2 flex-nowrap">
               {tickers.map(ticker => (
                 <div 
                   key={ticker} 
-                  className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-2xs font-bold transition-all border ${
+                  className={`watchlist-pill flex items-center space-x-1.5 px-3 py-1 rounded-full text-2xs font-bold transition-all border ${
                     selectedTicker === ticker 
-                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500 shadow-sm" 
-                      : "bg-white dark:bg-[#131B31] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400 dark:hover:border-slate-700"
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-500 shadow-sm" 
+                      : "bg-white dark:bg-[#131B31] border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-400 hover:border-slate-400 dark:hover:border-slate-700"
                   }`}
                 >
                   <button 
@@ -1503,7 +1503,7 @@ export default function Dashboard() {
                   
                   {/* Workspace Navigation Tabs */}
                   <div className="border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
-                    <div className="flex text-xs md:text-sm font-semibold overflow-x-auto md:overflow-x-visible scrollbar-none flex-nowrap md:flex-wrap gap-x-4 md:gap-x-6 gap-y-2 w-full overflow-y-hidden">
+                    <div className="responsive-tabs-container flex text-xs md:text-sm font-semibold gap-x-4 md:gap-x-6 gap-y-2 w-full overflow-y-hidden pb-1 overflow-x-auto md:overflow-x-visible flex-nowrap md:flex-wrap">
                       {[
                         { id: "Overview", label: "Overview & Charts" },
                         { id: "Comparator", label: "Stock Comparator" },
@@ -1517,7 +1517,7 @@ export default function Dashboard() {
                           className={`transition-all pb-3 relative whitespace-nowrap cursor-pointer ${
                             activeWorkspaceTab === tab.id
                               ? "text-indigo-500 font-bold"
-                              : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                           }`}
                         >
                           {tab.label}
@@ -2722,7 +2722,7 @@ export default function Dashboard() {
             
             {/* Sub-tab navigation */}
             <div className="border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
-              <div className="flex text-xs md:text-sm font-semibold overflow-x-auto md:overflow-x-visible scrollbar-none flex-nowrap md:flex-wrap gap-x-4 md:gap-x-6 gap-y-2 w-full overflow-y-hidden">
+              <div className="responsive-tabs-container flex text-xs md:text-sm font-semibold gap-x-4 md:gap-x-6 gap-y-2 w-full overflow-y-hidden pb-1 overflow-x-auto md:overflow-x-visible flex-nowrap md:flex-wrap">
                 {[
                   { id: "sip", label: "Advanced SIP Planner" },
                   { id: "compare_sip", label: "Compare SIPs" },
@@ -2735,7 +2735,7 @@ export default function Dashboard() {
                     className={`transition-all pb-3 relative whitespace-nowrap cursor-pointer ${
                       activeFinanceTab === tab.id
                         ? "text-indigo-500 font-bold"
-                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        : "text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                     }`}
                   >
                     {tab.label}
@@ -2865,19 +2865,19 @@ export default function Dashboard() {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30`}>
                             <span className="text-3xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider block">Total Principal</span>
-                            <span className="text-base font-black text-slate-800 dark:text-white mt-1 block">₹{sipEnhancedResults.total_invested.toLocaleString("en-IN")}</span>
+                            <span className="text-base font-black text-slate-800 dark:text-white mt-1 block">₹{sipEnhancedResults.total_invested.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
                           </div>
                           <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30`}>
                             <span className="text-3xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider block">Wealth Gain</span>
-                            <span className="text-base font-black text-emerald-500 mt-1 block">+₹{sipEnhancedResults.wealth_gain.toLocaleString("en-IN")}</span>
+                            <span className="text-base font-black text-emerald-500 mt-1 block">+₹{sipEnhancedResults.wealth_gain.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
                           </div>
                           <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30`}>
                             <span className="text-3xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider block">Nominal Corpus</span>
-                            <span className="text-base font-black text-indigo-400 mt-1 block">₹{sipEnhancedResults.future_value.toLocaleString("en-IN")}</span>
+                            <span className="text-base font-black text-indigo-400 mt-1 block">₹{sipEnhancedResults.future_value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
                           </div>
                           <div className={`p-4 rounded-xl border ${themeClasses.card} bg-slate-50/60 dark:bg-[#0E1322]/30`}>
                             <span className="text-3xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider block">Real Purchasing Power</span>
-                            <span className="text-base font-black text-rose-400 mt-1 block">₹{sipEnhancedResults.real_purchasing_power.toLocaleString("en-IN")}</span>
+                            <span className="text-base font-black text-rose-400 mt-1 block">₹{sipEnhancedResults.real_purchasing_power.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
                           </div>
                         </div>
 
@@ -3011,11 +3011,11 @@ export default function Dashboard() {
                             <span className="text-3xs text-indigo-500 dark:text-indigo-400 font-extrabold uppercase block border-b pb-1 border-slate-200 dark:border-slate-800">Portfolio A Maturity</span>
                             <div className="flex justify-between text-2xs">
                               <span className="text-slate-500 dark:text-slate-400">Total Invested:</span>
-                              <span className="font-semibold text-slate-800 dark:text-white">₹{sipCompareResults.sip_a.total_invested.toLocaleString("en-IN")}</span>
+                              <span className="font-semibold text-slate-800 dark:text-white">₹{sipCompareResults.sip_a.total_invested.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
                             </div>
                             <div className="flex justify-between text-2xs">
                               <span className="text-slate-500 dark:text-slate-400">Maturity Value:</span>
-                              <span className="font-black text-indigo-500 dark:text-indigo-400">₹{sipCompareResults.sip_a.future_value.toLocaleString("en-IN")}</span>
+                              <span className="font-black text-indigo-500 dark:text-indigo-400">₹{sipCompareResults.sip_a.future_value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
                             </div>
                           </div>
 
@@ -3023,11 +3023,11 @@ export default function Dashboard() {
                             <span className="text-3xs text-emerald-500 dark:text-emerald-400 font-extrabold uppercase block border-b pb-1 border-slate-200 dark:border-slate-800">Portfolio B Maturity</span>
                             <div className="flex justify-between text-2xs">
                               <span className="text-slate-500 dark:text-slate-400">Total Invested:</span>
-                              <span className="font-semibold text-slate-800 dark:text-white">₹{sipCompareResults.sip_b.total_invested.toLocaleString("en-IN")}</span>
+                              <span className="font-semibold text-slate-800 dark:text-white">₹{sipCompareResults.sip_b.total_invested.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
                             </div>
                             <div className="flex justify-between text-2xs">
                               <span className="text-slate-500 dark:text-slate-400">Maturity Value:</span>
-                              <span className="font-black text-emerald-500 dark:text-emerald-400">₹{sipCompareResults.sip_b.future_value.toLocaleString("en-IN")}</span>
+                              <span className="font-black text-emerald-500 dark:text-emerald-400">₹{sipCompareResults.sip_b.future_value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
                             </div>
                           </div>
                         </div>
@@ -3215,7 +3215,7 @@ export default function Dashboard() {
                             </div>
                             <div className="flex items-center space-x-3 md:space-x-6 shrink-0">
                               <span className={`font-bold text-sm ${item.type === "Income" ? "text-emerald-500" : "text-rose-500"}`}>
-                                {item.type === "Income" ? "+" : "-"} ₹{item.amount.toLocaleString("en-IN")}
+                                {item.type === "Income" ? "+" : "-"} ₹{item.amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
                               </span>
                               <button
                                 onClick={() => deleteExpenseItem(item.id)}
@@ -3310,7 +3310,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* Advisor Risk assessment card */}
-                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-5 text-xs text-slate-900 dark:text-white space-y-3">
+                        <div className="consensus-box bg-indigo-500/10 dark:bg-indigo-950/20 border border-indigo-500/20 dark:border-indigo-550/30 rounded-xl p-5 text-xs text-slate-900 dark:text-white space-y-3">
                           <h5 className="font-bold text-slate-900 dark:text-white flex items-center space-x-2">
                             <Cpu className="h-4.5 w-4.5 text-indigo-500 dark:text-indigo-400" />
                             <span className="text-slate-900 dark:text-white">AI Quant Advisor Consensus</span>
@@ -3319,13 +3319,13 @@ export default function Dashboard() {
                             Based on live Morningstar ratings and Sharpe Ratio computations, the following allocations are recommended:
                           </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-3xs pt-1.5 leading-relaxed text-slate-900 dark:text-white">
-                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
+                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white">
                               <span className="font-bold text-slate-900 dark:text-white uppercase block mb-1">Risk-Averse Investors</span>
-                              <span className="font-semibold text-blue-600 dark:text-blue-400">Mirae Asset Large Cap</span> or <span className="font-semibold text-emerald-600 dark:text-emerald-400">ICICI Hybrid</span> are recommended, offering a moderate volatility profile with strong Sharpe indicators (<span className="font-semibold text-amber-600 dark:text-amber-400">&gt; 1.2x</span>).
+                              <span className="font-semibold text-blue-600 dark:text-blue-400">Mirae Asset Large Cap</span> or <span className="font-semibold text-emerald-600 dark:text-emerald-450">ICICI Hybrid</span> are recommended, offering a moderate volatility profile with strong Sharpe indicators (<span className="font-semibold text-amber-600 dark:text-amber-400">&gt; 1.2x</span>).
                             </div>
-                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
+                            <div className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white">
                               <span className="font-bold text-slate-900 dark:text-white uppercase block mb-1">Growth Seekers</span>
-                              <span className="font-semibold text-rose-600 dark:text-rose-400">Nippon India Small Cap</span> or <span className="font-semibold text-amber-600 dark:text-amber-400">HDFC Mid-Cap</span> have yielded over <span className="font-semibold text-emerald-600 dark:text-emerald-400">25% returns</span> in the last <span className="font-semibold text-blue-600 dark:text-blue-400">1 year</span>, suitable for a <span className="font-semibold text-indigo-600 dark:text-indigo-400">5+ year</span> investment horizon.
+                              <span className="font-semibold text-rose-600 dark:text-rose-450">Nippon India Small Cap</span> or <span className="font-semibold text-amber-600 dark:text-amber-400">HDFC Mid-Cap</span> have yielded over <span className="font-semibold text-emerald-600 dark:text-emerald-450">25% returns</span> in the last <span className="font-semibold text-blue-600 dark:text-blue-400">1 year</span>, suitable for a <span className="font-semibold text-indigo-600 dark:text-indigo-400">5+ year</span> investment horizon.
                             </div>
                           </div>
                         </div>

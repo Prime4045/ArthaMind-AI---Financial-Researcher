@@ -4,7 +4,7 @@
   --background: #f8fafc;
   --foreground: #0f172a;
   
-  /* Responsive typography tokens - increased for readability on all screens */
+  /* Responsive typography tokens */
   --text-2xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.8125rem);    /* 12px on mobile -> 13px on desktop */
   --text-3xs: clamp(0.6875rem, 0.625rem + 0.25vw, 0.75rem);  /* 11px on mobile -> 12px on desktop */
   --text-4xs: clamp(0.5625rem, 0.5rem + 0.25vw, 0.625rem);   /* 9px on mobile -> 10px on desktop */
@@ -106,136 +106,292 @@ body {
   animation-play-state: paused;
 }
 
-/* Premium Light Theme Readability & Border Adjustments (Bloomberg/TradingView Inspired) */
+/* Live Ticker Pulse Glow */
+@keyframes tickerPulse {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.65; filter: drop-shadow(0 0 4px rgba(0, 200, 83, 0.3)); }
+}
+.live-pulse-glow {
+  animation: tickerPulse 3s infinite ease-in-out;
+}
+
+/* ---------------------------------------------------- */
+/* PREMIUM LIGHT THEME (html:not(.dark)) DEFINITIONS   */
+/* ---------------------------------------------------- */
 html:not(.dark) {
-  --background: #f5f7fa;
-  --foreground: #1e1e1e;
+  --background: #f7f9fc;
+  --foreground: #1a1a1a;
+  
+  /* Color System Tokens */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f9fc;
+  --bg-surface: #e9edf5;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #6c757d;
+  
+  --accent-blue: #007aff;
+  --accent-green: #00c853;
+  --accent-red: #ff3b30;
+  --accent-violet: #6e56cf;
+  --border-light: #d0d7e2;
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.12);
 }
 
 html:not(.dark) body {
-  background: linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%) no-repeat fixed !important;
-  color: #1e1e1e !important;
+  background: linear-gradient(to bottom, var(--bg-primary), var(--bg-secondary)) no-repeat fixed !important;
+  color: var(--text-primary) !important;
 }
 
-/* Light Card Styling - Layered Whites with distinct border & shadow */
+/* Layered whites for cards with elevation & hover lift */
 html:not(.dark) .glass-card {
-  background: #ffffff !important;
-  border: 1px solid #d0d7e2 !important;
-  box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.06) !important;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border-light) !important;
+  box-shadow: var(--shadow-soft) !important;
+  border-radius: 12px !important;
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out !important;
+  backdrop-filter: none !important;
 }
 
 html:not(.dark) .glass-card:hover {
   transform: translateY(-2px) !important;
-  box-shadow: 0px 6px 16px rgba(0, 0, 0, 0.08) !important;
+  box-shadow: var(--shadow-hover) !important;
 }
 
-/* Input elements - 6px corners, light border (#D0D7E2), blue tint on hover */
-html:not(.dark) input,
+/* Parent sections cards styling */
+html:not(.dark) .parent-card {
+  border: 1px solid #1a1a1a !important; /* solid black border as requested for light theme */
+  box-shadow: var(--shadow-soft) !important;
+}
+
+/* Gradient card headers */
+html:not(.dark) .card-header-gradient {
+  background: linear-gradient(to bottom, #f9fafb, #e9edf5) !important;
+  border-bottom: 1px solid var(--border-light) !important;
+}
+
+/* Clean, Translucent White Glassmorphism Header */
+html:not(.dark) header {
+  background: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(12px) !important;
+  border-bottom: 1px solid var(--border-light) !important;
+  box-shadow: var(--shadow-soft) !important;
+  color: var(--text-primary) !important;
+}
+
+html:not(.dark) header span:not(.text-indigo-400),
+html:not(.dark) header svg:not(.text-amber-400):not(.text-indigo-600),
+html:not(.dark) header nav button:not(.bg-indigo-600) {
+  color: var(--text-primary) !important;
+}
+
+/* Watchlist Bar Light Gradient with hover glow */
+html:not(.dark) .watchlist-container {
+  background: linear-gradient(to right, #f5f7fa, #e9edf5) !important;
+  border: 1px solid var(--border-light) !important;
+  backdrop-filter: blur(12px) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+}
+
+html:not(.dark) .watchlist-pill {
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border-light) !important;
+  color: var(--text-secondary) !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+html:not(.dark) .watchlist-pill:hover {
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 6px rgba(0, 122, 255, 0.25) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Search Bar inner shadow & glow on focus */
+html:not(.dark) .search-bar-form {
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border-light) !important;
+  box-shadow: var(--shadow-soft) !important;
+}
+
+html:not(.dark) .search-bar-input {
+  background: #ffffff !important;
+  border: 1px solid var(--border-light) !important;
+  border-radius: 6px !important;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+  transition: all 0.2s ease-in-out !important;
+  color: var(--text-primary) !important;
+}
+
+html:not(.dark) .search-bar-input:focus {
+  border-color: var(--accent-green) !important;
+  box-shadow: 0 0 8px rgba(0, 200, 83, 0.25), inset 0 1px 3px rgba(0, 0, 0, 0.02) !important;
+  outline: none !important;
+}
+
+/* Inputs, Select, Textareas */
+html:not(.dark) input:not(.search-bar-input),
 html:not(.dark) select,
 html:not(.dark) textarea {
-  background: #ffffff !important;
-  border: 1px solid #d0d7e2 !important;
-  color: #1e1e1e !important;
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border-light) !important;
+  color: var(--text-primary) !important;
   border-radius: 6px !important;
   transition: all 0.2s ease-in-out !important;
 }
 
-html:not(.dark) input:hover,
+html:not(.dark) input:not(.search-bar-input):hover,
 html:not(.dark) select:hover,
 html:not(.dark) textarea:hover {
-  border-color: #007aff !important;
+  border-color: var(--accent-blue) !important;
   background: rgba(0, 122, 255, 0.01) !important;
 }
 
-html:not(.dark) input:focus,
+html:not(.dark) input:not(.search-bar-input):focus,
 html:not(.dark) select:focus,
 html:not(.dark) textarea:focus {
-  border-color: #007aff !important;
+  border-color: var(--accent-blue) !important;
   box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15) !important;
-  background: #ffffff !important;
   outline: none !important;
 }
 
-/* Navigation Bar - White Glass-morphism with blur and accent colors */
-html:not(.dark) header {
-  background: rgba(255, 255, 255, 0.8) !important;
-  backdrop-filter: blur(12px) !important;
-  border-bottom: 1px solid #d0d7e2 !important;
-  box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.04) !important;
+/* Remove borders from inner buttons and tabs, keep only parent borders */
+html:not(.dark) main button,
+html:not(.dark) main [role="tablist"] button,
+html:not(.dark) main .tab-btn {
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
-/* Tab Active Underline & Text Accent Blue (#007AFF) */
-html:not(.dark) .text-indigo-500 {
-  color: #007aff !important;
-}
-html:not(.dark) .bg-indigo-500 {
-  background-color: #007aff !important;
-}
-
-/* Muted buttons & pills zoom scale hover effects */
-html:not(.dark) button:not(.bg-emerald-500):not(.bg-rose-500) {
+/* Light Theme Button styling: white bg with colored border/hover feedback */
+html:not(.dark) button.btn-colored-border {
+  background: var(--bg-primary) !important;
+  border: 1.5px solid var(--accent-blue) !important;
+  color: var(--accent-blue) !important;
+  border-radius: 6px !important;
+  font-weight: 600 !important;
   transition: all 0.2s ease-in-out !important;
 }
-html:not(.dark) button:not(.bg-emerald-500):not(.bg-rose-500):hover {
-  transform: scale(1.02) !important;
+
+html:not(.dark) button.btn-colored-border:hover {
+  background: var(--accent-blue) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3) !important;
 }
 
-/* Typography contrast settings: Dark Gray #1E1E1E for headers, Medium Gray #4A4A4A for body */
-html:not(.dark) .text-slate-900,
-html:not(.dark) .text-slate-800,
-html:not(.dark) .text-gray-900,
-html:not(.dark) .text-gray-800,
-html:not(.dark) .text-white,
+/* Light Theme Pill style tabs with active underline/bg indicators */
+html:not(.dark) .tab-pill-active {
+  color: var(--accent-blue) !important;
+  font-weight: 700 !important;
+  background: rgba(0, 122, 255, 0.08) !important;
+  border-radius: 6px !important;
+}
+
+/* Light typography: true black headings, medium gray body, monospace metrics */
 html:not(.dark) h1,
 html:not(.dark) h2,
 html:not(.dark) h3,
 html:not(.dark) h4,
 html:not(.dark) h5,
-html:not(.dark) h6 {
-  color: #1e1e1e !important; /* headings */
+html:not(.dark) h6,
+html:not(.dark) .text-black-heading {
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
 }
 
-html:not(.dark) .text-slate-400,
-html:not(.dark) .text-gray-400,
-html:not(.dark) .text-slate-500,
-html:not(.dark) .text-gray-500 {
-  color: #4a4a4a !important; /* body & labels */
-}
-
-html:not(.dark) .text-slate-600,
-html:not(.dark) .text-gray-650,
-html:not(.dark) .text-gray-600,
 html:not(.dark) p,
-html:not(.dark) span:not(.text-emerald-500):not(.text-rose-500):not(.text-indigo-400):not(.text-blue-400):not(.text-emerald-600):not(.text-rose-600):not(.text-amber-500):not(.text-amber-600):not(.text-indigo-500):not(.text-blue-600):not(.text-indigo-600) {
-  color: #4a4a4a !important; /* body text */
+html:not(.dark) span:not(.text-emerald-500):not(.text-rose-500):not(.text-indigo-400):not(.text-blue-400):not(.text-emerald-600):not(.text-rose-600):not(.text-amber-500):not(.text-amber-600):not(.text-indigo-500):not(.text-blue-600):not(.text-indigo-600),
+html:not(.dark) td {
+  color: var(--text-secondary) !important;
 }
 
-/* Borders mapping inside light container elements */
-html:not(.dark) .border,
-html:not(.dark) .border-slate-200,
-html:not(.dark) .border-slate-100,
-html:not(.dark) .border-slate-300 {
-  border-color: #d0d7e2 !important; /* Light border gray */
+/* Monospace metrics variant */
+html:not(.dark) .numeric-monospace {
+  font-family: var(--font-mono), monospace !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
 }
 
-/* Recharts grid lines opacity and values color */
+/* Recharts grid configuration in light theme (10% opacity grid) */
 html:not(.dark) .recharts-cartesian-grid-horizontal line,
 html:not(.dark) .recharts-cartesian-grid-vertical line {
-  stroke: #e9edf5 !important;
-  stroke-opacity: 1 !important; /* Solid visible but subtle cool neutral lines */
+  stroke: var(--border-light) !important;
+  stroke-opacity: 0.25 !important;
 }
 
 html:not(.dark) .recharts-cartesian-axis-tick-value {
-  fill: #4a4a4a !important;
+  fill: var(--text-secondary) !important;
+  font-family: var(--font-mono), monospace !important;
 }
+
 html:not(.dark) .recharts-legend-item-text {
-  color: #1e1e1e !important;
+  color: var(--text-primary) !important;
+}
+
+/* Recharts Tooltip styling - hover glow */
+html:not(.dark) .recharts-default-tooltip {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid var(--border-light) !important;
+  border-radius: 8px !important;
+}
+
+/* Confidence Gauge rotating ring */
+@keyframes rotateGauge {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.gauge-ring-animate {
+  animation: rotateGauge 10s linear infinite;
+}
+
+/* Footer Styling */
+html:not(.dark) footer {
+  background: #f7f9fc !important;
+  color: var(--text-muted) !important;
+  border-top: 1px solid var(--border-light) !important;
+}
+
+html:not(.dark) footer p,
+html:not(.dark) footer b {
+  color: var(--text-muted) !important;
+}
+
+/* Horizontal scroll bar layout bugs fix for tab selectors */
+.responsive-tabs-container {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+.responsive-tabs-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* Tab Active Underline & Text Accent Blue (#007AFF) */
+html:not(.dark) .text-indigo-500 {
+  color: var(--accent-blue) !important;
+}
+html:not(.dark) .bg-indigo-500 {
+  background-color: var(--accent-blue) !important;
+}
+html:not(.dark) .bg-indigo-600 {
+  background-color: var(--accent-blue) !important;
 }
 
 /* Divider lines inside cards */
 html:not(.dark) hr {
-  border-color: #e9edf5 !important;
+  border-color: var(--bg-surface) !important;
   border-width: 1px !important;
   opacity: 1 !important;
+}
+
+/* AI Quant Advisor Consensus Box in light mode */
+html:not(.dark) .consensus-box {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--border-light) !important;
+}
+html:not(.dark) .consensus-box *:not(.text-blue-600):not(.text-emerald-600):not(.text-rose-600):not(.text-amber-600):not(.text-indigo-600) {
+  color: var(--text-primary) !important;
 }
