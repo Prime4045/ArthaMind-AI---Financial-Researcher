@@ -258,6 +258,19 @@ export default function Dashboard() {
   const [selectedTicker, setSelectedTicker] = useState("RELIANCE.NS");
   const [searchQuery, setSearchQuery] = useState("");
   const [newTicker, setNewTicker] = useState("");
+
+  // Marquee prices list
+  const [marqueeData, setMarqueeData] = useState<any[]>([
+    { symbol: "RELIANCE.NS", price: "₹2,450.25", change: "+1.25%", up: true },
+    { symbol: "TCS.NS", price: "₹3,410.80", change: "-0.45%", up: false },
+    { symbol: "INFY.NS", price: "₹1,512.40", change: "+2.10%", up: true },
+    { symbol: "HDFCBANK.NS", price: "₹1,620.15", change: "+0.85%", up: true },
+    { symbol: "ICICIBANK.NS", price: "₹915.60", change: "-1.15%", up: false },
+    { symbol: "BAJFINANCE.NS", price: "₹7,210.00", change: "+1.95%", up: true },
+    { symbol: "ITC.NS", price: "₹442.30", change: "+0.25%", up: true },
+    { symbol: "LT.NS", price: "₹2,340.50", change: "-0.65%", up: false }
+  ]);
+  const [loadingMarquee, setLoadingMarquee] = useState(false);
   
   // Search suggestion state
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -565,6 +578,7 @@ export default function Dashboard() {
     fetchExpenses();
     fetchPaperPortfolio();
     fetchAlerts();
+    fetchMarqueeData();
     checkBackendConnection();
   }, []);
 
@@ -573,6 +587,7 @@ export default function Dashboard() {
     if (activeTab === "papertrading") {
       fetchPaperPortfolio();
     } else if (activeTab === "alerts") {
+      setAlertTicker(selectedTicker);
       fetchAlerts();
     } else if (activeTab === "backtesting") {
       runBacktest();
@@ -589,6 +604,23 @@ export default function Dashboard() {
       }
     } catch (err) {
       setBackendConnected(false);
+    }
+  }
+
+  async function fetchMarqueeData() {
+    setLoadingMarquee(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/stocks/marquee`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.results) {
+          setMarqueeData(data.results);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch marquee data:", err);
+    } finally {
+      setLoadingMarquee(false);
     }
   }
 
@@ -649,8 +681,14 @@ export default function Dashboard() {
   async function fetchTickers() {
     try {
       const res = await fetch(`${BACKEND_URL}/api/stocks`);
-      const data = await res.json();
-      setTickers(data.tickers);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.tickers) {
+          setTickers(data.tickers);
+        }
+      } else {
+        console.error("Failed to fetch tickers: server returned status", res.status);
+      }
     } catch (err) {
       console.error("Failed to fetch tickers:", err);
     }
@@ -762,7 +800,12 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker, action, shares })
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = { detail: "Failed to parse response from server." };
+      }
       if (res.ok) {
         setTradeMessage(data.message);
         fetchPaperPortfolio();
@@ -812,7 +855,12 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker, condition_type: cond, value: val })
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = { detail: "Failed to parse response from server." };
+      }
       if (res.ok) {
         setAlertMessage(data.message);
         setAlertValue("");
@@ -842,7 +890,12 @@ export default function Dashboard() {
     setMlRetrainLogs("Connecting to training server...");
     try {
       const res = await fetch(`${BACKEND_URL}/api/ml/retrain`, { method: "POST" });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = { detail: "Failed to parse response from server." };
+      }
       if (res.ok) {
         setMlRetrainLogs(
           `Self-calibrating complete!\nTrained on ${data.samples_trained} historical daily records.\nFeatures used: ${data.features_used.join(", ")}.\nSaved and reloaded model.`
@@ -895,7 +948,12 @@ export default function Dashboard() {
         fetchTickers();
         alert(`Successfully added ${tickerToAdd} to watchlist.`);
       } else {
-        const err = await res.json();
+        let err: any = {};
+        try {
+          err = await res.json();
+        } catch (e) {
+          err = { detail: "Failed to parse error details from server." };
+        }
         alert(err.detail || "Failed to add ticker");
       }
     } catch (err) {
@@ -1402,25 +1460,7 @@ export default function Dashboard() {
       {isMounted && (
         <div className={`border-b py-1.5 overflow-hidden text-3xs font-extrabold select-none relative z-40 ${theme === "light" ? "bg-gradient-to-r from-[#F7F9FC] to-[#E9EDF5] border-slate-200 text-slate-900" : "bg-[#090C16] border-indigo-500/10 text-white"}`}>
           <div className="animate-marquee whitespace-nowrap flex space-x-12">
-            {[
-              { symbol: "RELIANCE.NS", price: "₹2,450.25", change: "+1.25%", up: true },
-              { symbol: "TCS.NS", price: "₹3,410.80", change: "-0.45%", up: false },
-              { symbol: "INFY.NS", price: "₹1,512.40", change: "+2.10%", up: true },
-              { symbol: "HDFCBANK.NS", price: "₹1,620.15", change: "+0.85%", up: true },
-              { symbol: "ICICIBANK.NS", price: "₹915.60", change: "-1.15%", up: false },
-              { symbol: "BAJFINANCE.NS", price: "₹7,210.00", change: "+1.95%", up: true },
-              { symbol: "ITC.NS", price: "₹442.30", change: "+0.25%", up: true },
-              { symbol: "LT.NS", price: "₹2,340.50", change: "-0.65%", up: false }
-            ].concat([
-              { symbol: "RELIANCE.NS", price: "₹2,450.25", change: "+1.25%", up: true },
-              { symbol: "TCS.NS", price: "₹3,410.80", change: "-0.45%", up: false },
-              { symbol: "INFY.NS", price: "₹1,512.40", change: "+2.10%", up: true },
-              { symbol: "HDFCBANK.NS", price: "₹1,620.15", change: "+0.85%", up: true },
-              { symbol: "ICICIBANK.NS", price: "₹915.60", change: "-1.15%", up: false },
-              { symbol: "BAJFINANCE.NS", price: "₹7,210.00", change: "+1.95%", up: true },
-              { symbol: "ITC.NS", price: "₹442.30", change: "+0.25%", up: true },
-              { symbol: "LT.NS", price: "₹2,340.50", change: "-0.65%", up: false }
-            ]).map((item, idx) => (
+            {marqueeData.concat(marqueeData).map((item, idx) => (
               <div key={idx} className="flex items-center space-x-2">
                 <span className={theme === "light" ? "text-slate-650 font-semibold" : "text-slate-400 font-semibold"}>{item.symbol}</span>
                 <span className={`numeric-monospace font-bold ${theme === "light" ? "text-slate-900" : "text-white"}`}>{item.price}</span>
@@ -1597,8 +1637,17 @@ export default function Dashboard() {
               </div>
             )}
 
-             {/* Stock Header Information Card */}
-             <div className={`overflow-hidden rounded-2xl border flex flex-col ${themeClasses.card}`}>
+            <div className="relative flex flex-col space-y-6">
+              {loadingInfo && (
+                <div className="absolute inset-0 bg-slate-900/10 dark:bg-black/35 backdrop-blur-[2px] z-50 flex items-center justify-center rounded-2xl min-h-[450px]">
+                  <div className="bg-white/85 dark:bg-[#0F172A]/90 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col items-center space-y-4">
+                    <RefreshCw className="h-8 w-8 text-indigo-500 animate-spin" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-white">Loading dynamic financial data...</span>
+                  </div>
+                </div>
+              )}
+              {/* Stock Header Information Card */}
+              <div className={`overflow-hidden rounded-2xl border flex flex-col ${themeClasses.card}`}>
                {/* Top Row: Name, Price, and Watchlist Button */}
                <div className="card-header-gradient flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 p-4 md:p-6 border-b border-slate-200/40 dark:border-slate-800/60">
                  <div className="flex items-center space-x-3 md:space-x-4 max-w-full min-w-0">
@@ -1766,7 +1815,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* Interactive Recharts Canvas */}
-                        <div className="h-[260px] md:h-[320px] w-full relative">
+                        <div className="h-[260px] md:h-[320px] w-full relative mt-4 md:mt-6">
                           {loadingHistory ? (
                             <div className="h-full flex items-center justify-center text-slate-400 text-xs font-semibold">
                               <RefreshCw className="h-5 w-5 animate-spin mr-2 text-indigo-500" />
@@ -2891,14 +2940,11 @@ export default function Dashboard() {
                     </tbody>
                   </table>
                 </div>
-
-
               </div>
-
             </div>
-
           </div>
-        )}
+        </div>
+      )}
 
         {/* ==================== TAB 2: PORTFOLIO OPTIMIZER ==================== */}
         {activeTab === "optimizer" && (
@@ -3823,26 +3869,28 @@ export default function Dashboard() {
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Equity Curve Comparison</h4>
                       <span className="text-3xs text-slate-400">Initial Capital: ₹1,00,000</span>
                     </div>
-                    <div className="h-[280px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={backtestResults.equity_curve}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#F1F5F9" : "#1E293B/50"} />
-                          <XAxis dataKey="Date" tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} />
-                          <YAxis tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} domain={['auto', 'auto']} />
-                          <Tooltip 
-                            contentStyle={{ 
-                              backgroundColor: theme === "light" ? "#ffffff" : "#0E1322",
-                              borderColor: theme === "light" ? "#E2E8F0" : "#1E293B",
-                              fontSize: "11px",
-                              borderRadius: "12px",
-                              color: theme === "light" ? "#000000" : "#ffffff"
-                            }} 
-                          />
-                          <Legend wrapperStyle={{ fontSize: 10 }} />
-                          <Line type="monotone" dataKey="Strategy" name="Systematic AI Strategy" stroke="#6366F1" strokeWidth={2.5} dot={false} />
-                          <Line type="monotone" dataKey="Benchmark" name="Buy & Hold Index" stroke="#94A3B8" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
-                        </LineChart>
-                      </ResponsiveContainer>
+                    <div className="h-[280px] w-full">
+                      {isMounted && (
+                        <ResponsiveContainer width="100%" height={280} minWidth={0}>
+                          <LineChart data={backtestResults.equity_curve}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#F1F5F9" : "#1E293B/50"} />
+                            <XAxis dataKey="Date" tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} />
+                            <YAxis tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} domain={['auto', 'auto']} />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: theme === "light" ? "#ffffff" : "#0E1322",
+                                borderColor: theme === "light" ? "#E2E8F0" : "#1E293B",
+                                fontSize: "11px",
+                                borderRadius: "12px",
+                                color: theme === "light" ? "#000000" : "#ffffff"
+                              }} 
+                            />
+                            <Legend wrapperStyle={{ fontSize: 10 }} />
+                            <Line type="monotone" dataKey="Strategy" name="Systematic AI Strategy" stroke="#6366F1" strokeWidth={2.5} dot={false} />
+                            <Line type="monotone" dataKey="Benchmark" name="Buy & Hold Index" stroke="#94A3B8" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      )}
                     </div>
                   </div>
 
@@ -4024,13 +4072,22 @@ export default function Dashboard() {
                       );
                     })()}
                   </div>
-                  <button
-                    onClick={resetPaperTrading}
-                    className="p-4 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 text-xs font-bold rounded-xl flex items-center justify-center space-x-2 transition-all cursor-pointer"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    <span>Reset Account</span>
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={fetchPaperPortfolio}
+                      className="flex-1 bg-indigo-600/10 border border-indigo-500/20 hover:bg-indigo-600/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-xl flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      <span>Refresh Prices</span>
+                    </button>
+                    <button
+                      onClick={resetPaperTrading}
+                      className="flex-1 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 text-xs font-bold rounded-xl flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      <span>Reset Account</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
