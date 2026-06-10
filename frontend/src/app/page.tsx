@@ -886,12 +886,11 @@ export default function Dashboard() {
       const id = setTimeout(() => controller.abort(), 8000); // 8-second timeout
       const res = await fetch(`/api/status`, { signal: controller.signal });
       clearTimeout(id);
-      if (res.ok) {
-        setBackendConnected(true);
-      } else {
-        setBackendConnected(false);
-      }
+      // Any HTTP response (even 500) means the server IS reachable and running.
+      // Only a network failure (connection refused, timeout) means truly offline.
+      setBackendConnected(true);
     } catch (err) {
+      // Network-level failure: server is unreachable
       setBackendConnected(false);
     }
   }
@@ -1082,7 +1081,7 @@ export default function Dashboard() {
           setTickers(data.tickers);
         }
       } else {
-        console.error("Failed to fetch tickers: server returned status", res.status);
+        console.warn("Failed to fetch tickers: server returned status", res.status);
       }
     } catch (err) {
       console.error("Failed to fetch tickers:", err);
@@ -1851,38 +1850,40 @@ export default function Dashboard() {
       
       {/* Toast Notification */}
       {toastMessage && (
-        <div className={`fixed top-5 right-5 z-[9999] flex items-center space-x-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-semibold transition-all animate-fade-in ${
+        <div className={`fixed top-4 left-4 right-4 sm:left-auto sm:right-5 sm:max-w-sm z-[9999] flex items-center space-x-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-semibold transition-all animate-fade-in ${
           toastType === "success"
             ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/80 dark:border-emerald-700 dark:text-emerald-200"
             : "bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-900/80 dark:border-rose-700 dark:text-rose-200"
         }`}>
           <span>{toastType === "success" ? "✓" : "✕"}</span>
-          <span>{toastMessage}</span>
-          <button onClick={() => setToastMessage("")} className="ml-2 opacity-60 hover:opacity-100 cursor-pointer text-lg leading-none">×</button>
+          <span className="flex-1 min-w-0">{toastMessage}</span>
+          <button onClick={() => setToastMessage("")} className="ml-2 opacity-60 hover:opacity-100 cursor-pointer text-lg leading-none shrink-0">×</button>
         </div>
       )}
 
 
-      <header className={`${theme === "light" ? "bg-white/80 border-slate-200 text-slate-900 shadow-sm" : "bg-[#0B0F19]/90 border-slate-800/60 text-white"} backdrop-blur-md px-4 py-3 md:px-6 md:py-4 flex items-center justify-between border-b sticky top-0 z-50`}>
-        <div className="flex items-center space-x-2">
-          <div className="bg-gradient-to-tr from-indigo-600 to-cyan-500 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
-            <Activity className="h-5 w-5 text-white" />
+      <header className={`${theme === "light" ? "bg-white/80 border-slate-200 text-slate-900 shadow-sm" : "bg-[#0B0F19]/90 border-slate-800/60 text-white"} backdrop-blur-md px-3 py-2.5 md:px-6 md:py-4 flex items-center justify-between border-b sticky top-0 z-50 gap-2`}>
+        {/* Logo */}
+        <div className="flex items-center space-x-2 shrink-0">
+          <div className="bg-gradient-to-tr from-indigo-600 to-cyan-500 p-1.5 md:p-2 rounded-xl shadow-lg shadow-indigo-500/20">
+            <Activity className="h-4 w-4 md:h-5 md:w-5 text-white" />
           </div>
-          <span className={`text-lg md:text-xl font-bold tracking-tight flex items-center ${theme === "light" ? "text-slate-900" : "text-white"}`}>
-            Artha<span className={theme === "light" ? "text-[#007AFF] font-extrabold" : "text-indigo-400 font-extrabold"}>Mind AI</span>
+          <span className={`text-base md:text-xl font-bold tracking-tight flex items-center ${theme === "light" ? "text-slate-900" : "text-white"}`}>
+            Artha<span className={theme === "light" ? "text-[#007AFF] font-extrabold" : "text-indigo-400 font-extrabold"}>Mind</span>
+            <span className="hidden sm:inline ml-0.5"><span className={theme === "light" ? "text-[#007AFF] font-extrabold" : "text-indigo-400 font-extrabold"}> AI</span></span>
           </span>
         </div>
 
-        {/* Clean, Functional Module Navigation */}
-        <nav className={`hidden md:flex space-x-2 p-1 border rounded-xl ${theme === "light" ? "bg-slate-50 border-slate-200" : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800"}`}>
+        {/* Desktop Module Navigation — equally divided, shown only on large screens */}
+        <nav className={`hidden lg:flex p-1 border rounded-xl flex-1 mx-4 ${theme === "light" ? "bg-slate-50 border-slate-200" : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800"}`}>
           {[
-            { id: "research", label: "Stock Analyst", icon: Activity },
-            { id: "derivatives", label: "Derivatives (F&O)", icon: TrendingUp },
-            { id: "optimizer", label: "Portfolio Optimizer", icon: PieIcon },
-            { id: "finance", label: "Wealth Planner", icon: Landmark },
-            { id: "backtesting", label: "Strategy Backtester", icon: History },
-            { id: "papertrading", label: "Paper Simulator", icon: Wallet },
-            { id: "alerts", label: "Alert Center", icon: Bell }
+            { id: "research", label: "Analyst", icon: Activity },
+            { id: "derivatives", label: "F&O", icon: TrendingUp },
+            { id: "optimizer", label: "Portfolio", icon: PieIcon },
+            { id: "finance", label: "Wealth", icon: Landmark },
+            { id: "backtesting", label: "Backtest", icon: History },
+            { id: "papertrading", label: "Paper", icon: Wallet },
+            { id: "alerts", label: "Alerts", icon: Bell }
           ].map(module => {
             const isActive = activeTab === module.id;
             const Icon = module.icon;
@@ -1893,13 +1894,13 @@ export default function Dashboard() {
                   setActiveTab(module.id as any);
                   if (module.id === "research") setActiveWorkspaceTab("Overview");
                 }}
-                className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   isActive 
                     ? (theme === "light" ? "bg-[#007AFF] text-white shadow-sm" : "bg-indigo-600 text-white shadow-md shadow-indigo-600/10") 
-                    : (theme === "light" ? "bg-white border border-slate-200 text-slate-700 hover:bg-[#007AFF] hover:text-white shadow-2xs" : "text-slate-400 hover:text-white hover:bg-slate-800/50")
+                    : (theme === "light" ? "text-slate-600 hover:bg-white hover:text-[#007AFF] hover:shadow-sm" : "text-slate-400 hover:text-white hover:bg-slate-800/50")
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className="h-3.5 w-3.5 shrink-0" />
                 <span>{module.label}</span>
               </button>
             );
@@ -1907,25 +1908,25 @@ export default function Dashboard() {
         </nav>
 
         {/* Right Nav Utilities */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 md:space-x-3 shrink-0">
           
-          {/* Connection Status Badge */}
+          {/* Connection Status Badge — always shows text on all screen sizes */}
           {backendConnected === true && (
-            <span className="flex items-center space-x-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full text-3xs font-extrabold text-emerald-600 dark:text-emerald-400">
-              <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+            <span className="flex items-center space-x-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-full text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+              <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0"></span>
               <span>API ONLINE</span>
             </span>
           )}
           {backendConnected === false && (
-            <span className="flex items-center space-x-1.5 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-full text-3xs font-extrabold text-rose-500 dark:text-rose-450">
-              <span className="h-1.5 w-1.5 bg-rose-500 rounded-full"></span>
+            <span className="flex items-center space-x-1.5 bg-rose-500/10 border border-rose-500/20 px-2 py-1 rounded-full text-[10px] font-extrabold text-rose-500 whitespace-nowrap">
+              <span className="h-1.5 w-1.5 bg-rose-500 rounded-full shrink-0"></span>
               <span>API OFFLINE</span>
             </span>
           )}
           {backendConnected === null && (
-            <span className="flex items-center space-x-1.5 bg-slate-500/10 border border-slate-500/20 px-2.5 py-1 rounded-full text-3xs font-extrabold text-slate-500 dark:text-slate-400 animate-pulse">
-              <span className="h-1.5 w-1.5 bg-slate-500 rounded-full"></span>
-              <span>CONNECTING</span>
+            <span className="flex items-center space-x-1.5 bg-slate-500/10 border border-slate-500/20 px-2 py-1 rounded-full text-[10px] font-extrabold text-slate-500 dark:text-slate-400 animate-pulse whitespace-nowrap">
+              <span className="h-1.5 w-1.5 bg-slate-500 rounded-full shrink-0"></span>
+              <span>Connecting</span>
             </span>
           )}
 
@@ -1936,9 +1937,9 @@ export default function Dashboard() {
             className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-650 dark:text-slate-300 transition-colors cursor-pointer"
           >
             {theme === "light" ? (
-              <Moon className="h-5 w-5 text-slate-600" />
+              <Moon className="h-4 w-4 md:h-5 md:w-5 text-slate-600" />
             ) : (
-              <Sun className="h-5 w-5 text-amber-400" />
+              <Sun className="h-4 w-4 md:h-5 md:w-5 text-amber-400" />
             )}
           </button>
         </div>
@@ -2057,7 +2058,7 @@ export default function Dashboard() {
       )}
 
       {/* Main Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col space-y-4 md:space-y-6 relative z-10">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col space-y-4 md:space-y-6 relative z-10 pb-[calc(var(--mobile-nav-height)+1rem)] md:pb-6">
         
         {/* ==================== TAB 1: STOCK RESEARCH HUB ==================== */}
         {activeTab === "research" && (
@@ -2199,8 +2200,8 @@ export default function Dashboard() {
                  )}
                </div>
 
-                {/* Bottom Row: Key Metrics Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4 text-xs p-4 md:p-6">
+                {/* Bottom Row: Key Metrics Grid — 2-col mobile, 3-col tablet, 6-col desktop */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 md:gap-4 text-xs p-4 md:p-6">
                   <div className={`metric-box p-2.5 md:p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-white border-slate-200 shadow-sm hover:shadow-md" : "bg-slate-100/60 dark:bg-[#0E1322]/55 border-transparent"}`}>
                     <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Today's High</div>
                     <div className={`numeric-monospace font-extrabold text-sm mt-0.5 ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currencySymbol}{currentStock.high.toFixed(2)}</div>
@@ -2219,11 +2220,11 @@ export default function Dashboard() {
                   </div>
                   <div className={`metric-box p-2.5 md:p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-white border-slate-200 shadow-sm hover:shadow-md" : "bg-slate-100/60 dark:bg-[#0E1322]/55 border-transparent"}`}>
                     <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Volume</div>
-                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currentStock.volume}</div>
+                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 truncate ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currentStock.volume}</div>
                   </div>
                   <div className={`metric-box p-2.5 md:p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5 ${theme === "light" ? "bg-white border-slate-200 shadow-sm hover:shadow-md" : "bg-slate-100/60 dark:bg-[#0E1322]/55 border-transparent"}`}>
                     <div className="text-slate-500 dark:text-slate-400 font-bold uppercase text-3xs">Market Cap</div>
-                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currentStock.cap}</div>
+                    <div className={`numeric-monospace font-extrabold text-sm mt-0.5 truncate ${theme === "light" ? "text-slate-900" : "text-slate-100"}`}>{currentStock.cap}</div>
                   </div>
                 </div>
               </div>
@@ -2238,19 +2239,19 @@ export default function Dashboard() {
                 <div className={`overflow-hidden ${themeClasses.card}`}>
                   
                   {/* Workspace Navigation Tabs with gradient header */}
-                  <div className="card-header-gradient px-4 py-4 md:px-6 md:py-4 border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
-                    <div className="responsive-tabs-container flex text-xs md:text-sm font-semibold gap-x-4 md:gap-x-6 w-full overflow-x-auto scrollbar-none flex-nowrap pb-2">
+                  <div className="card-header-gradient px-3 py-3 md:px-6 md:py-4 border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
+                    <div className="scroll-x-touch flex text-xs font-semibold gap-x-3 md:gap-x-6 w-full flex-nowrap pb-1 md:pb-2">
                       {[
-                        { id: "Overview", label: "Overview & Charts" },
-                        { id: "Comparator", label: "Stock Comparator" },
-                        { id: "AI Research Hub", label: "AI Research Hub" },
-                        { id: "Technical Indicators", label: "Technical Indicators" },
-                        { id: "News Feed", label: "News Feed" }
+                        { id: "Overview", label: "Charts" },
+                        { id: "Comparator", label: "Compare" },
+                        { id: "AI Research Hub", label: "AI Hub" },
+                        { id: "Technical Indicators", label: "Technicals" },
+                        { id: "News Feed", label: "News" }
                       ].map((tab) => (
                         <button
                           key={tab.id}
                           onClick={() => setActiveWorkspaceTab(tab.id)}
-                          className={`transition-all pb-3 relative whitespace-nowrap cursor-pointer ${
+                          className={`transition-all pb-2.5 md:pb-3 relative whitespace-nowrap cursor-pointer min-h-[36px] flex items-center ${
                             activeWorkspaceTab === tab.id
                               ? "text-indigo-500 font-bold"
                               : "text-slate-655 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
@@ -2272,21 +2273,21 @@ export default function Dashboard() {
                     {activeWorkspaceTab === "Overview" && (
                       <div className="space-y-6">
                         
-                        {/* Chart Control Bar */}
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900/40 p-2.5 md:p-3 rounded-xl border border-slate-200 dark:border-slate-800/70">
+                        {/* Chart Control Bar — stacks vertically on mobile */}
+                        <div className="flex flex-col gap-2 bg-slate-50 dark:bg-slate-900/40 p-2.5 md:p-3 rounded-xl border border-slate-200 dark:border-slate-800/70">
                           
-                          {/* Indicator Views */}
-                          <div className="flex space-x-1 p-1 bg-slate-100 dark:bg-[#0E1322] border border-slate-200 dark:border-slate-800/80 rounded-lg overflow-x-auto scrollbar-none flex-nowrap max-w-full w-full md:w-auto">
+                          {/* Row 1: Indicator Views */}
+                          <div className="scroll-x-touch flex space-x-1 p-1 bg-slate-100 dark:bg-[#0E1322] border border-slate-200 dark:border-slate-800/80 rounded-lg flex-nowrap w-full">
                             {[
-                              { id: "price", label: "Price (Area)" },
+                              { id: "price", label: "Price" },
                               { id: "ma", label: "MA Trend" },
-                              { id: "rsi", label: "RSI Momentum" },
-                              { id: "macd", label: "MACD Oscillator" }
+                              { id: "rsi", label: "RSI" },
+                              { id: "macd", label: "MACD" }
                             ].map(view => (
                               <button
                                 key={view.id}
                                 onClick={() => setChartSubView(view.id as any)}
-                                className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                                className={`flex-1 px-2 py-1.5 rounded text-3xs font-extrabold transition-all cursor-pointer whitespace-nowrap text-center min-h-[32px] ${
                                   chartSubView === view.id
                                     ? "bg-indigo-600 text-white shadow-sm"
                                     : theme === "light" 
@@ -2299,14 +2300,14 @@ export default function Dashboard() {
                             ))}
                           </div>
 
-                          {/* Timeframe & Interval Selectors */}
-                          <div className="flex items-center space-x-3 overflow-x-auto scrollbar-none flex-nowrap max-w-full w-full md:w-auto pb-1 md:pb-0">
-                            <div className="flex space-x-1 border-r pr-3 border-slate-250 dark:border-slate-800/80">
+                          {/* Row 2: Timeframe Selectors */}
+                          <div className="scroll-x-touch flex items-center flex-nowrap w-full">
+                            <div className="flex space-x-0.5">
                               {["1D", "5D", "1M", "6M", "1Y", "5Y", "Max"].map(period => (
                                 <button
                                   key={period}
                                   onClick={() => setTimePeriod(period)}
-                                  className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all border whitespace-nowrap ${
+                                  className={`px-2.5 py-1.5 rounded text-3xs font-extrabold transition-all border whitespace-nowrap min-h-[32px] ${
                                     timePeriod === period 
                                       ? theme === "light"
                                         ? "bg-white text-indigo-600 border-slate-300 shadow-2xs"
@@ -3699,23 +3700,24 @@ export default function Dashboard() {
             
             {/* Sub-tab navigation */}
             <div className="border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
-              <div className="responsive-tabs-container flex text-xs md:text-sm font-semibold gap-x-4 md:gap-x-6 gap-y-2 w-full overflow-y-hidden pb-1 overflow-x-auto md:overflow-x-visible flex-nowrap md:flex-wrap">
+              <div className="scroll-x-touch flex text-xs font-semibold gap-x-4 md:gap-x-6 w-full flex-nowrap pb-1">
                 {[
-                  { id: "sip", label: "Advanced SIP Planner" },
-                  { id: "compare_sip", label: "Compare SIPs" },
-                  { id: "tax_expense", label: "Tax & Expenses Ledger" },
-                  { id: "mf", label: "Mutual Fund Advisor" }
+                  { id: "sip", label: "SIP Planner", fullLabel: "Advanced SIP Planner" },
+                  { id: "compare_sip", label: "Compare SIPs", fullLabel: "Compare SIPs" },
+                  { id: "tax_expense", label: "Tax & Ledger", fullLabel: "Tax & Expenses Ledger" },
+                  { id: "mf", label: "Mutual Funds", fullLabel: "Mutual Fund Advisor" }
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveFinanceTab(tab.id as any)}
-                    className={`transition-all pb-3 relative whitespace-nowrap cursor-pointer ${
+                    className={`transition-all pb-3 relative whitespace-nowrap cursor-pointer min-h-[36px] flex items-center ${
                       activeFinanceTab === tab.id
                         ? "text-indigo-500 font-bold"
                         : "text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                     }`}
                   >
-                    {tab.label}
+                    <span className="sm:hidden">{tab.label}</span>
+                    <span className="hidden sm:inline">{tab.fullLabel}</span>
                     {activeFinanceTab === tab.id && (
                       <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full shadow-sm"></span>
                     )}
@@ -3723,6 +3725,7 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
+
 
             {/* Sub-tab Contents */}
             <div>
@@ -5464,45 +5467,47 @@ export default function Dashboard() {
         </p>
       </footer>
 
-      {/* Mobile Bottom Navigation Bar */}
-      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-50 backdrop-blur-lg border-t px-4 py-2.5 flex justify-around items-center shadow-lg ${
+      {/* Mobile Bottom Navigation Bar — horizontally scrollable so all 7 tabs fit on any phone */}
+      <nav className={`lg:hidden fixed bottom-0 left-0 right-0 z-50 backdrop-blur-lg border-t shadow-lg pb-safe ${
         theme === "light" 
           ? "bg-white/95 border-slate-200" 
           : "bg-[#0B0F19]/95 border-slate-800/80"
       }`}>
-        {[
-          { id: "research", label: "Analyst", icon: Activity },
-          { id: "derivatives", label: "F&O", icon: TrendingUp },
-          { id: "optimizer", label: "Optimizer", icon: PieIcon },
-          { id: "finance", label: "Planner", icon: Landmark },
-          { id: "backtesting", label: "Backtest", icon: History },
-          { id: "papertrading", label: "Paper", icon: Wallet },
-          { id: "alerts", label: "Alerts", icon: Bell }
-        ].map(module => {
-          const isActive = activeTab === module.id;
-          const Icon = module.icon;
-          return (
-            <button 
-              key={module.id}
-              onClick={() => {
-                setActiveTab(module.id as any);
-                if (module.id === "research") setActiveWorkspaceTab("Overview");
-              }}
-              className={`flex flex-col items-center space-y-1 py-1 px-1.5 rounded-xl transition-all ${
-                isActive 
-                  ? theme === "light" 
-                    ? "text-indigo-600 font-bold bg-indigo-50" 
-                    : "text-indigo-400 font-bold bg-indigo-500/10"
-                  : theme === "light" 
-                    ? "text-slate-500 hover:text-slate-900" 
-                    : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Icon className="h-4.5 w-4.5" />
-              <span className="text-[9px] font-semibold">{module.label}</span>
-            </button>
-          );
-        })}
+        <div className="flex items-stretch w-full px-1 py-1.5">
+          {[
+            { id: "research", label: "Analyst", icon: Activity },
+            { id: "derivatives", label: "F&O", icon: TrendingUp },
+            { id: "optimizer", label: "Portfolio", icon: PieIcon },
+            { id: "finance", label: "Wealth", icon: Landmark },
+            { id: "backtesting", label: "Backtest", icon: History },
+            { id: "papertrading", label: "Paper", icon: Wallet },
+            { id: "alerts", label: "Alerts", icon: Bell }
+          ].map(module => {
+            const isActive = activeTab === module.id;
+            const Icon = module.icon;
+            return (
+              <button 
+                key={module.id}
+                onClick={() => {
+                  setActiveTab(module.id as any);
+                  if (module.id === "research") setActiveWorkspaceTab("Overview");
+                }}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-xl transition-all min-h-[48px] ${
+                  isActive 
+                    ? theme === "light" 
+                      ? "text-[#007AFF] font-bold bg-blue-50" 
+                      : "text-indigo-400 font-bold bg-indigo-500/10"
+                    : theme === "light" 
+                      ? "text-slate-500" 
+                      : "text-slate-400"
+                }`}
+              >
+                <Icon className="h-[17px] w-[17px] shrink-0" />
+                <span className="text-[8px] font-semibold leading-none">{module.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </nav>
 
     </div>
