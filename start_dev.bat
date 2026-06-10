@@ -4,7 +4,7 @@ echo.
 
 :: Start FastAPI backend in a new terminal window
 echo [1/2] Starting FastAPI backend on http://127.0.0.1:8000 ...
-start "ArthaMind Backend" cmd /k "cd /d "%~dp0" && .\venv\Scripts\uvicorn.exe backend.main:app --host 127.0.0.1 --port 8000 --reload"
+start "ArthaMind Backend" cmd /k "cd /d "%~dp0" && .\venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload"
 
 :: Wait 3 seconds for backend to initialize
 timeout /t 3 /nobreak > nul

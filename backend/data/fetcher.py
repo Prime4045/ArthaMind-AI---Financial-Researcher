@@ -42,6 +42,34 @@ def get_robust_session() -> requests.Session:
     session.mount("https://", adapter)
     return session
 
+def _clean_fetched_df(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    df = df.copy()
+    # Clean MultiIndex columns if present
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+        
+    df = df.reset_index()
+    
+    # Rename Datetime to Date so downstream code can use it uniformly
+    if "Datetime" in df.columns:
+        df = df.rename(columns={"Datetime": "Date"})
+        
+    # Standardize column casing (ensure Open, High, Low, Close, Volume)
+    rename_cols = {}
+    for col in df.columns:
+        if col.lower() in ["open", "high", "low", "close", "volume"]:
+            cap_col = col.lower().capitalize()
+            if col != cap_col:
+                rename_cols[col] = cap_col
+    if rename_cols:
+        df = df.rename(columns=rename_cols)
+        
+    if "Close" in df.columns:
+        df = df.dropna(subset=["Close"])
+        
+    df["Stock"] = ticker
+    return df
+
 def fetch_stock_data(ticker: str, period: str = "5y", interval: str = None) -> pd.DataFrame:
     """
     Downloads historical data for a ticker with custom session headers.
@@ -56,32 +84,48 @@ def fetch_stock_data(ticker: str, period: str = "5y", interval: str = None) -> p
             interval = "1d"
             
     logger.info(f"Downloading data for {ticker} (Period: {period}, Interval: {interval})...")
-    session = get_robust_session()
     
+    # Tier 1: yf.download with custom session headers
     try:
-        # Download data passing the custom session
-        df = yf.download(ticker, period=period, interval=interval, session=session, progress=False)
-        
-        if df.empty:
-            logger.warning(f"No data returned for ticker {ticker}.")
-            return pd.DataFrame()
-            
-        # Clean MultiIndex columns if present
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-            
-        df = df.reset_index()
-        
-        # Rename Datetime to Date so downstream code can use it uniformly
-        if "Datetime" in df.columns:
-            df = df.rename(columns={"Datetime": "Date"})
-            
-        df["Stock"] = ticker
-        logger.info(f"Successfully downloaded {len(df)} rows for {ticker}.")
-        return df
+        session = get_robust_session()
+        df = yf.download(ticker, period=period, interval=interval, session=session, progress=False, auto_adjust=True)
+        if not df.empty:
+            logger.info(f"Successfully downloaded via yf.download (session) for {ticker}.")
+            return _clean_fetched_df(df, ticker)
     except Exception as e:
-        logger.error(f"Error fetching data for {ticker}: {str(e)}")
-        return pd.DataFrame()
+        logger.warning(f"yf.download (session) failed for {ticker}: {e}")
+        
+    # Tier 2: yf.Ticker.history with custom session headers
+    try:
+        session = get_robust_session()
+        yt = yf.Ticker(ticker, session=session)
+        df = yt.history(period=period, interval=interval)
+        if not df.empty:
+            logger.info(f"Successfully downloaded via yf.Ticker.history (session) for {ticker}.")
+            return _clean_fetched_df(df, ticker)
+    except Exception as e:
+        logger.warning(f"yf.Ticker.history (session) failed for {ticker}: {e}")
+
+    # Tier 3: yf.download with DEFAULT session (no headers)
+    try:
+        df = yf.download(ticker, period=period, interval=interval, progress=False, auto_adjust=True)
+        if not df.empty:
+            logger.info(f"Successfully downloaded via yf.download (default) for {ticker}.")
+            return _clean_fetched_df(df, ticker)
+    except Exception as e:
+        logger.warning(f"yf.download (default) failed for {ticker}: {e}")
+
+    # Tier 4: yf.Ticker.history with DEFAULT session (no headers)
+    try:
+        yt = yf.Ticker(ticker)
+        df = yt.history(period=period, interval=interval)
+        if not df.empty:
+            logger.info(f"Successfully downloaded via yf.Ticker.history (default) for {ticker}.")
+            return _clean_fetched_df(df, ticker)
+    except Exception as e:
+        logger.error(f"All yfinance fetching attempts failed for {ticker}: {e}")
+
+    return pd.DataFrame()
 
 def fetch_multiple_stocks(tickers: list = None, period: str = "5y") -> pd.DataFrame:
     """

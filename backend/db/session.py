@@ -11,7 +11,7 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
     DATABASE_URL, 
-    connect_args={"check_same_thread": False}  # Needed for SQLite in multi-threaded environments like FastAPI
+    connect_args={"check_same_thread": False, "timeout": 30}  # Needed for SQLite in multi-threaded environments like FastAPI
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

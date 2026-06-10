@@ -62,7 +62,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pydantic import BaseModel
 import joblib
 import tempfile
@@ -323,29 +323,73 @@ def get_marquee_stocks(db: Session = Depends(get_db)):
 @app.get("/api/stocks/search")
 def search_stocks(q: str = Query(..., min_length=1)):
     """
-    Queries Yahoo Finance Search API to find matching Indian stock symbols (.NS or .BO).
+    Queries Yahoo Finance Search API to find matching stocks, ETFs, indices, futures, currencies, mutual funds, and bonds.
+    Prioritizes a local registry of standard assets for instantaneous and accurate results.
     """
-    query = q.strip().upper()
-    if not query:
+    raw_query = q.strip()
+    query_upper = raw_query.upper()
+    if not raw_query:
         return {"results": []}
         
+    local_registry = [
+        {"symbol": "^NSEI", "name": "NIFTY 50 Index", "exchange": "NSE", "sector": "Indices", "industry": "Benchmark Index"},
+        {"symbol": "^BSESN", "name": "S&P BSE SENSEX Index", "exchange": "BSE", "sector": "Indices", "industry": "Benchmark Index"},
+        {"symbol": "^NSEBANK", "name": "NIFTY Bank Index", "exchange": "NSE", "sector": "Indices", "industry": "Sectoral Index"},
+        {"symbol": "RELIANCE.NS", "name": "Reliance Industries Limited", "exchange": "NSE", "sector": "Energy", "industry": "Oil & Gas"},
+        {"symbol": "TCS.NS", "name": "Tata Consultancy Services Limited", "exchange": "NSE", "sector": "Technology", "industry": "IT Services"},
+        {"symbol": "INFY.NS", "name": "Infosys Limited", "exchange": "NSE", "sector": "Technology", "industry": "IT Services"},
+        {"symbol": "HDFCBANK.NS", "name": "HDFC Bank Limited", "exchange": "NSE", "sector": "Financial Services", "industry": "Private Bank"},
+        {"symbol": "ICICIBANK.NS", "name": "ICICI Bank Limited", "exchange": "NSE", "sector": "Financial Services", "industry": "Private Bank"},
+        {"symbol": "SBIN.NS", "name": "State Bank of India", "exchange": "NSE", "sector": "Financial Services", "industry": "Public Bank"},
+        {"symbol": "ITC.NS", "name": "ITC Limited", "exchange": "NSE", "sector": "Consumer Defensive", "industry": "Tobacco & FMCG"},
+        {"symbol": "LT.NS", "name": "Larsen & Toubro Limited", "exchange": "NSE", "sector": "Industrials", "industry": "Engineering & Construction"},
+        {"symbol": "BAJFINANCE.NS", "name": "Bajaj Finance Limited", "exchange": "NSE", "sector": "Financial Services", "industry": "Non-Banking Financial"},
+        {"symbol": "HINDUNILVR.NS", "name": "Hindustan Unilever Limited", "exchange": "NSE", "sector": "Consumer Defensive", "industry": "Household & Personal"},
+        {"symbol": "GOLDBEES.NS", "name": "Nippon India ETF Gold BeES (Gold ETF)", "exchange": "NSE", "sector": "Commodities", "industry": "Precious Metals ETF"},
+        {"symbol": "NIFTYBEES.NS", "name": "Nippon India ETF Nifty BeES (Nifty ETF)", "exchange": "NSE", "sector": "Financial Services", "industry": "Index ETF"},
+        {"symbol": "GC=F", "name": "Gold COMEX Futures", "exchange": "CMX", "sector": "Commodities", "industry": "Precious Metals"},
+        {"symbol": "USDINR=X", "name": "USD to INR Exchange Rate", "exchange": "CCY", "sector": "Forex", "industry": "Currency Pair"},
+    ]
+
+    results = []
+    seen_symbols = set()
+
+    # Match in local registry first
+    for item in local_registry:
+        if (query_upper in item["symbol"].upper()) or (query_upper in item["name"].upper()):
+            results.append({
+                "symbol": item["symbol"],
+                "name": item["name"],
+                "exchange": item["exchange"],
+                "sector": item["sector"],
+                "industry": item["industry"]
+            })
+            seen_symbols.add(item["symbol"])
+        
     try:
+        import re
         from backend.data.fetcher import get_robust_session
-        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&newsCount=0"
         session = get_robust_session()
-        response = session.get(url, timeout=5)
+        # Query Yahoo Search API with the mixed-case query
+        response = session.get("https://query2.finance.yahoo.com/v1/finance/search", params={"q": raw_query, "newsCount": 0}, timeout=5)
         
-        if response.status_code != 200:
-            logger.warning(f"Yahoo Search API returned status {response.status_code}")
-            return {"results": []}
-            
-        data = response.json()
-        quotes = data.get("quotes", [])
-        
-        results = []
-        for quote in quotes:
-            symbol = quote.get("symbol", "")
-            if symbol:
+        if response.status_code == 200:
+            data = response.json()
+            quotes = data.get("quotes", [])
+            for quote in quotes:
+                symbol = quote.get("symbol", "")
+                if not symbol or symbol in seen_symbols:
+                    continue
+                    
+                # Filter by quoteType to restrict to stock equities, ETFs, futures, currencies, indices, mutual funds, and bonds
+                quote_type = quote.get("quoteType", "").upper()
+                if quote_type not in ["EQUITY", "ETF", "FUTURE", "CURRENCY", "INDEX", "MUTUALFUND", "BOND"]:
+                    continue
+                    
+                # Ignore standard options/futures contracts
+                if re.search(r'\d{2}[A-Z]{3}\d+(?:CE|PE|FUT|C|P|F)', symbol.upper()) or re.search(r'FUT$', symbol.upper()) or re.search(r'\d{5,}(?:CE|PE)', symbol.upper()):
+                    continue
+                    
                 results.append({
                     "symbol": symbol,
                     "name": quote.get("longname") or quote.get("shortname") or symbol,
@@ -353,10 +397,12 @@ def search_stocks(q: str = Query(..., min_length=1)):
                     "sector": quote.get("sector", "Unknown"),
                     "industry": quote.get("industry", "Unknown")
                 })
-        return {"results": results[:8]}
+        else:
+            logger.warning(f"Yahoo Search API returned status {response.status_code}")
     except Exception as e:
-        logger.error(f"Error searching stocks for query '{query}': {str(e)}")
-        return {"results": []}
+        logger.error(f"Error searching stocks for query '{raw_query}': {str(e)}")
+        
+    return {"results": results[:8]}
 
 @app.post("/api/watchlist/add")
 def add_to_watchlist(ticker: str, db: Session = Depends(get_db)):
@@ -400,21 +446,82 @@ def remove_from_watchlist(ticker: str, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"Removed {ticker} from watchlist."}
 
+def fetch_and_cache_history(ticker: str, period: str, db: Session, interval: str = None) -> List[Dict[str, Any]]:
+    ticker = ticker.strip().upper()
+    period = period.strip().lower()
+    if interval:
+        interval = interval.strip().lower()
+    
+    cache_period_key = f"{period}_{interval}" if interval else period
+    try:
+        df = pd.DataFrame()
+        try:
+            df = fetch_stock_data(ticker, period=period, interval=interval)
+        except Exception as fetch_err:
+            logger.error(f"fetch_stock_data threw exception for {ticker}: {fetch_err}")
+            
+        if df.empty:
+            raise Exception("fetch_stock_data returned empty DataFrame")
+            
+        indicators_df = calculate_technical_indicators(df)
+        if indicators_df.empty:
+            raise Exception("Calculated indicators DataFrame is empty")
+            
+        if "Date" in indicators_df.columns:
+            fmt_str = "%Y-%m-%d %H:%M" if (period in ["1d", "5d"] or (interval and any(x in interval for x in ["m", "h"]))) else "%Y-%m-%d"
+            indicators_df["Date"] = indicators_df["Date"].apply(
+                lambda x: x.strftime(fmt_str) if isinstance(x, datetime) or hasattr(x, "strftime") else str(x)
+            )
+            
+        records = indicators_df.to_dict(orient="records")
+        records_json_str = json.dumps(records)
+        
+        try:
+            cache_record = db.query(StockHistoryCache).filter(
+                StockHistoryCache.ticker == ticker,
+                StockHistoryCache.period == cache_period_key
+            ).first()
+            if cache_record:
+                cache_record.history_json = records_json_str
+                cache_record.last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                new_cache = StockHistoryCache(
+                    ticker=ticker,
+                    period=cache_period_key,
+                    history_json=records_json_str,
+                    last_updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                )
+                db.add(new_cache)
+            db.commit()
+            logger.info(f"Successfully cached stock history for {ticker} ({cache_period_key}).")
+        except Exception as db_err:
+            db.rollback()
+            logger.error(f"Error saving stock history cache to DB: {str(db_err)}")
+            
+        return records
+    except Exception as e:
+        logger.error(f"Error fetching/calculating history for {ticker} ({cache_period_key}): {str(e)}")
+        raise e
+
 @app.get("/api/stock/{ticker}/history")
-def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get_db)):
+def get_stock_history(ticker: str, period: str = "1y", interval: str = None, db: Session = Depends(get_db)):
     """
     Fetches historical stock prices and computes technical indicators for rendering charts.
     Caches results in SQLite to prevent yfinance rate limits.
     """
+    import threading
     ticker = ticker.strip().upper()
     period = period.strip().lower()
+    if interval:
+        interval = interval.strip().lower()
+        
+    cache_period_key = f"{period}_{interval}" if interval else period
     
-    # Try fetching from DB cache first (valid if last updated is less than 12 hours ago, or shorter for intraday)
     cache_record = None
     try:
         cache_record = db.query(StockHistoryCache).filter(
             StockHistoryCache.ticker == ticker,
-            StockHistoryCache.period == period
+            StockHistoryCache.period == cache_period_key
         ).first()
     except Exception as query_err:
         logger.error(f"Error querying history cache: {query_err}")
@@ -425,126 +532,41 @@ def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get
         try:
             last_updated_dt = datetime.strptime(cache_record.last_updated, "%Y-%m-%d %H:%M:%S")
             age_seconds = (datetime.now() - last_updated_dt).total_seconds()
-            # Cache threshold: 120 seconds (2 mins) for 1d, 30 minutes (1800s) for others
             cache_expiry = 120 if period == "1d" else 1800
             if age_seconds < cache_expiry:
                 is_stale = False
         except Exception as e:
-            logger.warning(f"Error parsing history cache timestamp for {ticker} ({period}): {str(e)}")
+            logger.warning(f"Error parsing history cache timestamp for {ticker} ({cache_period_key}): {str(e)}")
             is_stale = True
             
-    if not is_stale and cache_record:
+    if cache_record:
+        if is_stale:
+            def run_update():
+                from backend.db.session import SessionLocal
+                bg_db = SessionLocal()
+                try:
+                    fetch_and_cache_history(ticker, period, bg_db, interval=interval)
+                except Exception as bg_e:
+                    logger.error(f"Error in background history update: {bg_e}")
+                finally:
+                    bg_db.close()
+            threading.Thread(target=run_update, daemon=True).start()
+            logger.info(f"Triggered background update for stale stock history: {ticker} ({cache_period_key}) (age: {age_seconds / 60:.2f} mins)")
+            
         try:
-            logger.info(f"Loading {ticker} ({period}) stock history from database cache (age: {age_seconds / 60:.2f} minutes).")
             data = json.loads(cache_record.history_json)
             return data
         except Exception as e:
-            logger.error(f"Error parsing cached history JSON for {ticker} ({period}): {str(e)}")
+            logger.error(f"Error parsing cached history JSON for {ticker} ({cache_period_key}): {str(e)}")
             
-    # If not cached or stale, download fresh data
     try:
-        df = pd.DataFrame()
-        try:
-            df = fetch_stock_data(ticker, period=period)
-        except Exception as fetch_err:
-            logger.error(f"fetch_stock_data threw exception for {ticker}: {fetch_err}")
-            
-        if df.empty:
-            # Fallback to stale cache if available
-            if cache_record:
-                try:
-                    logger.info(f"Serving stale cached stock history for {ticker} ({period}) as fallback after yfinance failure.")
-                    return json.loads(cache_record.history_json)
-                except Exception as parse_err:
-                    logger.error(f"Failed to parse stale history cache fallback: {str(parse_err)}")
-            
-            # If no cache is found or parse failed, generate simulated price walk fallback
-            import random
-            logger.warning(f"No yfinance data and no cache found for {ticker} ({period}). Generating simulated price walk fallback.")
-            
-            start_price = 1500.0
-            try:
-                info_cache_record = db.query(StockInfoCache).filter(StockInfoCache.ticker == ticker).first()
-                if info_cache_record:
-                    info_dict = json.loads(info_cache_record.info_json)
-                    if info_dict.get("currentPrice", 0.0) > 0.0:
-                        start_price = info_dict.get("currentPrice")
-            except Exception as info_ex:
-                logger.warning(f"Could not load start price from info cache: {info_ex}")
-                
-            dates = []
-            curr_date = datetime.now()
-            days_count = 252 if period == "1y" else (126 if period == "6mo" else (22 if period == "1mo" else 252))
-            while len(dates) < days_count:
-                if curr_date.weekday() < 5:
-                    dates.insert(0, curr_date)
-                curr_date -= timedelta(days=1)
-                
-            prices = []
-            current = start_price
-            random.seed(hash(ticker))
-            for _ in range(days_count):
-                ret = random.uniform(-0.015, 0.017)
-                current = current / (1 + ret)
-                prices.insert(0, current)
-                
-            df = pd.DataFrame({
-                "Date": dates,
-                "Open": [p * random.uniform(0.99, 1.01) for p in prices],
-                "High": [p * random.uniform(1.0, 1.02) for p in prices],
-                "Low": [p * random.uniform(0.98, 1.0) for p in prices],
-                "Close": prices,
-                "Volume": [int(random.uniform(500000, 5000000)) for _ in prices],
-                "Stock": [ticker] * days_count
-            })
-            
-        # Process indicators
-        indicators_df = calculate_technical_indicators(df)
-        if indicators_df.empty:
-            raise Exception("Calculated indicators DataFrame is empty")
-            
-        # Format Date column for JSON serializability
-        if "Date" in indicators_df.columns:
-            fmt_str = "%Y-%m-%d %H:%M" if period in ["1d", "5d"] else "%Y-%m-%d"
-            indicators_df["Date"] = indicators_df["Date"].apply(
-                lambda x: x.strftime(fmt_str) if isinstance(x, datetime) or hasattr(x, "strftime") else str(x)
-            )
-            
-        records = indicators_df.to_dict(orient="records")
-        records_json_str = json.dumps(records)
-        
-        # Save to database cache
-        try:
-            if cache_record:
-                cache_record.history_json = records_json_str
-                cache_record.last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                new_cache = StockHistoryCache(
-                    ticker=ticker,
-                    period=period,
-                    history_json=records_json_str,
-                    last_updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                )
-                db.add(new_cache)
-            db.commit()
-            logger.info(f"Successfully cached stock history for {ticker} ({period}).")
-        except Exception as db_err:
-            db.rollback()
-            logger.error(f"Error saving stock history cache to DB: {str(db_err)}")
-            
-        return records
-        
-    except Exception as e:
-        logger.error(f"Error fetching/calculating history for {ticker} ({period}): {str(e)}")
-        # Fallback to stale cache if available
+        return fetch_and_cache_history(ticker, period, db, interval=interval)
+    except Exception:
         if cache_record:
             try:
-                logger.info(f"Serving stale cached stock history for {ticker} ({period}) as fallback after error.")
                 return json.loads(cache_record.history_json)
-            except Exception as parse_err:
-                logger.error(f"Failed to parse stale history cache fallback: {str(parse_err)}")
-                
-        # Return empty list instead of raising error
+            except Exception:
+                pass
         return []
 
 def get_ticker_name_from_search(ticker: str) -> Dict[str, str]:
@@ -691,110 +713,86 @@ def fetch_quote_summary_details(ticker: str) -> dict:
         logger.warning(f"Error fetching quoteSummary direct API for {ticker}: {e}")
     return {}
 
-def get_cached_stock_info(ticker: str, db: Session) -> Dict[str, Any]:
+def fetch_and_cache_info(ticker: str, db: Session) -> Dict[str, Any]:
     ticker = ticker.strip().upper()
-    
-    # Check if there is a cached record
-    cache_record = db.query(StockInfoCache).filter(StockInfoCache.ticker == ticker).first()
-    
-    is_stale = True
-    age_seconds = 999999.0
-    if cache_record:
-        # Check cache age (12 hours)
-        try:
-            last_updated_dt = datetime.strptime(cache_record.last_updated, "%Y-%m-%d %H:%M:%S")
-            age_seconds = (datetime.now() - last_updated_dt).total_seconds()
-            # Cache threshold: 120 seconds (2 mins) to keep prices fresh
-            if age_seconds < 120:
-                is_stale = False
-        except Exception as e:
-            logger.warning(f"Error parsing cache timestamp for {ticker}: {str(e)}")
-            is_stale = True
-
-    if not is_stale and cache_record:
-        # Serve from cache
-        try:
-            info = json.loads(cache_record.info_json)
-            news = json.loads(cache_record.news_json)
-            info["news"] = news
-            
-            # Check and trigger alerts from cached price
-            current_price = safe_float(info.get("currentPrice"), 0.0)
-            if current_price > 0.0:
-                check_and_trigger_alerts(ticker, current_price, db)
-                
-            logger.info(f"Serving cached info for {ticker} (age: {age_seconds / 3600:.2f} hours)")
-            return info
-        except Exception as e:
-            logger.error(f"Error parsing cached JSON for {ticker}: {str(e)}")
-            # Fall back to fetching from yfinance if JSON parsing fails
-
-    # If stale or missing, fetch from yfinance
-    logger.info(f"Fetching fresh stock info for {ticker} from yfinance...")
     try:
         import yfinance as yf
         from backend.data.fetcher import get_robust_session
         session = get_robust_session()
         yf_ticker = yf.Ticker(ticker, session=session)
         
-        # Try fetching .info with error handling to avoid breaking on rate limit / scraper block
-        info = {}
-        try:
-            info = yf_ticker.info
-            if not info or not isinstance(info, dict):
-                info = {}
-        except Exception as info_err:
-            logger.warning(f"Could not load .info for {ticker}: {str(info_err)}")
-            info = {}
-
-        # Fetch fast_info as a highly reliable fallback for price/volume/marketcap
-        fast_info = {}
-        try:
-            fi = yf_ticker.fast_info
-            fast_info = {
-                "currentPrice": fi.get("lastPrice"),
-                "open": fi.get("open"),
-                "close": fi.get("previousClose") or fi.get("regularMarketPreviousClose"),
-                "high": fi.get("dayHigh"),
-                "low": fi.get("dayLow"),
-                "volume": fi.get("lastVolume") or fi.get("tenDayAverageVolume"),
-                "marketCap": fi.get("marketCap"),
-                "fiftyTwoWeekHigh": fi.get("yearHigh"),
-                "fiftyTwoWeekLow": fi.get("yearLow"),
-            }
-        except Exception as fi_err:
-            logger.warning(f"Could not load .fast_info for {ticker}: {str(fi_err)}")
+        import concurrent.futures
         
-        # Parse news
-        raw_news = []
-        try:
-            raw_news = yf_ticker.news
-        except Exception as e:
-            logger.warning(f"Could not load news for {ticker}: {str(e)}")
+        def get_info():
+            try:
+                inf = yf_ticker.info
+                return inf if isinstance(inf, dict) else {}
+            except Exception as info_err:
+                logger.warning(f"Could not load .info for {ticker}: {str(info_err)}")
+                return {}
+
+        def get_fast_info():
+            try:
+                fi = yf_ticker.fast_info
+                return {
+                    "currentPrice": fi.get("lastPrice"),
+                    "open": fi.get("open"),
+                    "close": fi.get("previousClose") or fi.get("regularMarketPreviousClose"),
+                    "high": fi.get("dayHigh"),
+                    "low": fi.get("dayLow"),
+                    "volume": fi.get("lastVolume") or fi.get("tenDayAverageVolume"),
+                    "marketCap": fi.get("marketCap"),
+                    "fiftyTwoWeekHigh": fi.get("yearHigh"),
+                    "fiftyTwoWeekLow": fi.get("yearLow"),
+                }
+            except Exception as fi_err:
+                logger.warning(f"Could not load .fast_info for {ticker}: {str(fi_err)}")
+                return {}
+
+        def get_news():
+            try:
+                return yf_ticker.news or []
+            except Exception as e:
+                logger.warning(f"Could not load news for {ticker}: {str(e)}")
+                return []
+
+        def get_summary():
+            return fetch_quote_summary_details(ticker)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            future_info = executor.submit(get_info)
+            future_fast = executor.submit(get_fast_info)
+            future_news = executor.submit(get_news)
+            future_summary = executor.submit(get_summary)
+
+            info = future_info.result() or {}
+            fast_info = future_fast.result() or {}
+            raw_news = future_news.result() or []
+            summary_api = future_summary.result() or {}
             
         news_list = []
         if isinstance(raw_news, list):
             for item in raw_news[:5]:
                 if not isinstance(item, dict):
                     continue
-                content = item.get("content", {})
-                title = content.get("title") or item.get("title") or ""
+                content_item = item.get("content", {})
+                title = content_item.get("title") or item.get("title") or ""
                 
                 publisher = ""
-                if content.get("provider") and isinstance(content["provider"], dict):
-                    publisher = content["provider"].get("displayName", "")
+                if content_item.get("provider") and isinstance(content_item["provider"], dict):
+                    publisher = content_item["provider"].get("displayName", "")
                 if not publisher:
                     publisher = item.get("publisher") or ""
                     
                 link = ""
-                if content.get("clickThroughUrl") and isinstance(content["clickThroughUrl"], dict):
-                    link = content["clickThroughUrl"].get("url", "")
-                elif content.get("canonicalUrl") and isinstance(content["canonicalUrl"], dict):
-                    link = content["canonicalUrl"].get("url", "")
+                if content_item.get("clickThroughUrl") and isinstance(content_item["clickThroughUrl"], dict):
+                    link = content_item["clickThroughUrl"].get("url", "")
+                elif content_item.get("canonicalUrl") and isinstance(content_item["canonicalUrl"], dict):
+                    link = content_item["canonicalUrl"].get("url", "")
                 if not link:
                     link = item.get("link") or ""
                     
-                pub_date = content.get("pubDate") or content.get("displayTime")
+                pub_date = content_item.get("pubDate") or content_item.get("displayTime")
                 time_val = 0
                 if pub_date:
                     try:
@@ -813,7 +811,6 @@ def get_cached_stock_info(ticker: str, db: Session) -> Dict[str, Any]:
                     "time": time_val
                 })
             
-        # Resolve current price using robust fallbacks (info first, then fast_info)
         current_price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("navPrice") or fast_info.get("currentPrice") or 0.0
         if current_price == 0.0:
             current_price = info.get("previousClose") or info.get("regularMarketPreviousClose") or fast_info.get("close") or 0.0
@@ -825,15 +822,10 @@ def get_cached_stock_info(ticker: str, db: Session) -> Dict[str, Any]:
             except Exception:
                 pass
 
-        # Ensure news_list is not empty
         if not news_list:
             prev_close_price = info.get("previousClose") or info.get("regularMarketPreviousClose") or fast_info.get("close") or current_price
             news_list = get_simulated_news(ticker, current_price, prev_close_price)
 
-        # Retrieve statistics from quoteSummary API
-        summary_api = fetch_quote_summary_details(ticker)
-
-        # If name or metadata is missing, fallback to search API lookup
         search_details = {}
         if not info.get("longName") and not info.get("shortName"):
             search_details = get_ticker_name_from_search(ticker)
@@ -842,7 +834,6 @@ def get_cached_stock_info(ticker: str, db: Session) -> Dict[str, Any]:
         sector = info.get("sector") or search_details.get("sector") or "Unknown"
         industry = info.get("industry") or search_details.get("industry") or "Unknown"
 
-        # Resolve financial statistics with robust fallbacks
         pe_val = info.get("trailingPE") or info.get("forwardPE") or summary_api.get("peRatio") or 0.0
         eps_val = info.get("trailingEps") or summary_api.get("eps") or 0.0
         div_yield_val = info.get("dividendYield") or summary_api.get("dividendYield") or 0.0
@@ -877,16 +868,13 @@ def get_cached_stock_info(ticker: str, db: Session) -> Dict[str, Any]:
             "currentPrice": current_price,
         }
         
-        # Save to DB cache ONLY if we got a valid price (currentPrice > 0.0)
         if current_price > 0.0:
             try:
-                # Evaluate and trigger any active alerts for this stock
                 check_and_trigger_alerts(ticker, current_price, db)
-                
-                # Prepare data to save (exclude news list from info_json)
                 info_json_str = json.dumps(info_data)
                 news_json_str = json.dumps(news_list)
                 
+                cache_record = db.query(StockInfoCache).filter(StockInfoCache.ticker == ticker).first()
                 if cache_record:
                     cache_record.info_json = info_json_str
                     cache_record.news_json = news_json_str
@@ -907,33 +895,63 @@ def get_cached_stock_info(ticker: str, db: Session) -> Dict[str, Any]:
         else:
             logger.warning(f"Did not cache stock info for {ticker} because resolved currentPrice was 0.0.")
             
-        # Add news back to return dictionary
         info_data["news"] = news_list
         return info_data
 
     except Exception as e:
         logger.exception(f"Error fetching info for {ticker} from yfinance: {str(e)}")
-        # Stale cache fallback: If cache_record exists (even if stale), return it on error
-        if cache_record:
-            try:
-                info = json.loads(cache_record.info_json)
-                news = json.loads(cache_record.news_json)
-                info["news"] = news
-                logger.info(f"Serving stale cached info for {ticker} as fallback after error.")
-                return info
-            except Exception as parse_err:
-                logger.error(f"Failed to parse stale cache fallback for {ticker}: {str(parse_err)}")
-                
-        # Return fallback structure
+        fb = NIFTY_FALLBACKS.get(ticker) or get_custom_fallback_stats(ticker)
         return {
             "symbol": ticker,
             "name": ticker,
-            "description": f"No online details available for {ticker}. Please check connection or ticker symbol.",
-            "open": 0.0, "close": 0.0, "high": 0.0, "low": 0.0, "volume": 0, "marketCap": 0,
-            "peRatio": 0.0, "eps": 0.0, "dividendYield": 0.0, "roe": 0.0,
-            "fiftyTwoWeekHigh": 0.0, "fiftyTwoWeekLow": 0.0, "sector": "Unknown", "industry": "Unknown",
-            "website": "", "currentPrice": 0.0, "news": []
+            "description": f"No online details available for {ticker}. Please check connection.",
+            "open": fb["currentPrice"], "close": fb["close"], "high": fb["currentPrice"], "low": fb["currentPrice"], "volume": 0, "marketCap": 0,
+            "peRatio": fb["peRatio"], "eps": fb["eps"], "dividendYield": fb["dividendYield"], "roe": fb["roe"],
+            "fiftyTwoWeekHigh": fb["currentPrice"], "fiftyTwoWeekLow": fb["currentPrice"], "sector": "Unknown", "industry": "Unknown",
+            "website": "", "currentPrice": fb["currentPrice"], "news": []
         }
+
+def get_cached_stock_info(ticker: str, db: Session) -> Dict[str, Any]:
+    import threading
+    ticker = ticker.strip().upper()
+    
+    cache_record = db.query(StockInfoCache).filter(StockInfoCache.ticker == ticker).first()
+    
+    is_stale = True
+    age_seconds = 999999.0
+    if cache_record:
+        try:
+            last_updated_dt = datetime.strptime(cache_record.last_updated, "%Y-%m-%d %H:%M:%S")
+            age_seconds = (datetime.now() - last_updated_dt).total_seconds()
+            if age_seconds < 120:
+                is_stale = False
+        except Exception as e:
+            logger.warning(f"Error parsing cache timestamp for {ticker}: {str(e)}")
+            is_stale = True
+
+    if cache_record:
+        if is_stale:
+            def run_update():
+                from backend.db.session import SessionLocal
+                bg_db = SessionLocal()
+                try:
+                    fetch_and_cache_info(ticker, bg_db)
+                except Exception as bg_e:
+                    logger.error(f"Error in background stock info update: {bg_e}")
+                finally:
+                    bg_db.close()
+            threading.Thread(target=run_update, daemon=True).start()
+            logger.info(f"Triggered background update for stale stock info: {ticker} (age: {age_seconds / 60:.2f} mins)")
+            
+        try:
+            info = json.loads(cache_record.info_json)
+            news = json.loads(cache_record.news_json)
+            info["news"] = news
+            return info
+        except Exception as e:
+            logger.error(f"Error parsing cached JSON for {ticker}: {str(e)}")
+
+    return fetch_and_cache_info(ticker, db)
 
 @app.get("/api/stock/{ticker}/info")
 def get_stock_info(ticker: str, db: Session = Depends(get_db)):

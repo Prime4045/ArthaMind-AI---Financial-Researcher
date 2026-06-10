@@ -11,6 +11,22 @@ import {
   Network, Activity, Landmark, ChevronRight, HelpCircle, Play, Bell, Wallet, RotateCcw, History
 } from "lucide-react";
 
+// Suppress chrome extension runtime connection warnings/errors from polluting the console
+if (typeof window !== "undefined") {
+  const originalError = console.error;
+  console.error = (...args: any[]) => {
+    const msg = args.map(arg => (typeof arg === "string" ? arg : arg?.message || "")).join(" ");
+    if (
+      msg.includes("Could not establish connection") ||
+      msg.includes("Receiving end does not exist") ||
+      msg.includes("runtime.lastError")
+    ) {
+      return;
+    }
+    originalError.apply(console, args);
+  };
+}
+
 const DEFAULT_TICKERS = [
   "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
   "SBIN.NS", "ITC.NS", "LT.NS", "BAJFINANCE.NS", "HINDUNILVR.NS"
@@ -229,6 +245,38 @@ export default function Dashboard() {
   // Backend connection state (true = online, false = offline, null = checking)
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
 
+  // Toast notification state (replaces blocking alert() calls)
+  const [toastMessage, setToastMessage] = useState<string>("");
+  const [toastType, setToastType] = useState<"success" | "error">("success");
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMessage(msg);
+    setToastType(type);
+    toastTimerRef.current = setTimeout(() => setToastMessage(""), 3500);
+  };
+
+  const cleanChartDateFormatter = (tick: any) => {
+    if (!tick) return "";
+    if (typeof tick !== "string") return String(tick);
+    if (tick.includes(" ")) {
+      const parts = tick.split(" ");
+      return parts[1] ? parts[1].substring(0, 5) : tick;
+    }
+    if (tick.includes("-")) {
+      const parts = tick.split("-");
+      if (parts.length === 3) {
+        const monthMap: Record<string, string> = {
+          "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr", "05": "May", "06": "Jun",
+          "07": "Jul", "08": "Aug", "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dec"
+        };
+        return `${parts[2]} ${monthMap[parts[1]] || parts[1]}`;
+      }
+    }
+    return tick;
+  };
+
   // Check if component is fully mounted (for Recharts SSR client-side layout rendering)
   const [isMounted, setIsMounted] = useState(false);
 
@@ -236,7 +284,7 @@ export default function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(true);
 
   // Screen views (research, portfolio optimizer, personal finance, backtesting, paper trading, alerts)
-  const [activeTab, setActiveTab] = useState<"research" | "optimizer" | "finance" | "backtesting" | "papertrading" | "alerts">("research");
+  const [activeTab, setActiveTab] = useState<"research" | "optimizer" | "finance" | "backtesting" | "papertrading" | "alerts" | "derivatives">("research");
   
   // Workspace tabs
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<string>("Overview");
@@ -252,10 +300,16 @@ export default function Dashboard() {
 
   // Time period selectors (1D, 5D, 1M, 6M, YTD, 1Y, 5Y, Max)
   const [timePeriod, setTimePeriod] = useState<string>("1Y");
+  const [chartInterval, setChartInterval] = useState<string>("1d");
+  const [activeDrawingTool, setActiveDrawingTool] = useState<"none" | "trendline" | "fibonacci">("none");
+  const [drawingPoints, setDrawingPoints] = useState<any[]>([]);
+  const [savedDrawings, setSavedDrawings] = useState<any[]>([]);
 
   // Watchlist & Tickers list
   const [tickers, setTickers] = useState<string[]>([]);
   const [selectedTicker, setSelectedTicker] = useState("RELIANCE.NS");
+  const isFirstRender = useRef(true);
+  const prevTickerRef = useRef("RELIANCE.NS");
   const [searchQuery, setSearchQuery] = useState("");
   const [newTicker, setNewTicker] = useState("");
 
@@ -366,6 +420,7 @@ export default function Dashboard() {
   const [compareSuggestionsB, setCompareSuggestionsB] = useState<any[]>([]);
   const [showCompareSuggestionsA, setShowCompareSuggestionsA] = useState(false);
   const [showCompareSuggestionsB, setShowCompareSuggestionsB] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Advanced SIP State
   const [sipMode, setSipMode] = useState<"investment" | "goal">("investment");
@@ -402,12 +457,13 @@ export default function Dashboard() {
   const [foLegs, setFoLegs] = useState<any[]>([]);
   const [foPayoffData, setFoPayoffData] = useState<any[]>([]);
   const [foMlForecast, setFoMlForecast] = useState<any>(null);
-  const [foTab, setFoTab] = useState<"Chain" | "Analysis" | "Simulator" | "Broker">("Chain");
+  const [foTab, setFoTab] = useState<"Chain" | "Analysis" | "Simulator" | "Positions">("Chain");
   const [brokerConfig, setBrokerConfig] = useState<any>({ api_key: "", access_token: "", client_id: "" });
   const [brokerConnected, setBrokerConnected] = useState(false);
   const [activeBroker, setActiveBroker] = useState<string>("None");
   const [foPositionList, setFoPositionList] = useState<any[]>([]);
   const [foCashBalance, setFoCashBalance] = useState<number>(1000000); // 10 Lakh INR Starting Capital
+  const [isLiveFeedActive, setIsLiveFeedActive] = useState<boolean>(false);
 
   const fetchFoExpirations = async (ticker: string) => {
     try {
@@ -428,7 +484,11 @@ export default function Dashboard() {
   const fetchFoOptionChain = async (ticker: string, expiry: string) => {
     setFoLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/fo/option-chain?ticker=${ticker}&expiration=${expiry}`);
+      const [res, mlRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/fo/option-chain?ticker=${ticker}&expiration=${expiry}`),
+        fetch(`${BACKEND_URL}/api/fo/ml-forecast?ticker=${ticker}`)
+      ]);
+      
       if (res.ok) {
         const data = await res.json();
         setFoOptionChain(data);
@@ -437,7 +497,6 @@ export default function Dashboard() {
         setFoPayoffData([]);
       }
       
-      const mlRes = await fetch(`${BACKEND_URL}/api/fo/ml-forecast?ticker=${ticker}`);
       if (mlRes.ok) {
         const mlData = await mlRes.json();
         setFoMlForecast(mlData);
@@ -571,7 +630,7 @@ export default function Dashboard() {
     const cost = premium * lotSize * size;
     
     if (action === "BUY" && foCashBalance < cost) {
-      alert("Insufficient cash balance to purchase this option contract.");
+      showToast("Insufficient cash balance to purchase this option contract.", "error");
       return;
     }
     
@@ -797,16 +856,26 @@ export default function Dashboard() {
     fetchAlerts();
     fetchMarqueeData();
     checkBackendConnection();
+    // Periodically re-check backend connection every 30 seconds to auto-recover
+    const connInterval = setInterval(checkBackendConnection, 30000);
+    return () => clearInterval(connInterval);
   }, []);
 
-  // Fetch paper trading, alerts, and backtest dynamically when tab changes
+  // Fetch paper trading / alerts / F&O when switching to those tabs
   useEffect(() => {
     if (activeTab === "papertrading") {
       fetchPaperPortfolio();
     } else if (activeTab === "alerts") {
       setAlertTicker(selectedTicker);
       fetchAlerts();
-    } else if (activeTab === "backtesting") {
+    } else if (activeTab === "derivatives") {
+      fetchFoExpirations(selectedTicker);
+    }
+  }, [activeTab, selectedTicker]);
+
+  // Run backtest ONLY when on the backtesting tab and the ticker/period actually changes
+  useEffect(() => {
+    if (activeTab === "backtesting") {
       runBacktest();
     }
   }, [activeTab, selectedTicker, backtestPeriod]);
@@ -841,35 +910,165 @@ export default function Dashboard() {
     }
   }
 
-  // Fetch stock dashboard data (tickers, info, history, recommendation) when selected stock or time period changes
-  useEffect(() => {
-    fetchDashboardData(selectedTicker, timePeriod);
-  }, [selectedTicker, timePeriod]);
-
-  async function fetchDashboardData(ticker: string, period: string = "1Y") {
-    // Clear old data so the loading checklist starts fresh
-    setCurrentStockInfo(null);
-    setStockHistory([]);
-    setAiRecommendation(null);
-    setFoOptionChain(null);
-    setFoExpirations([]);
-
-    setLoadingHistory(true);
-    setLoadingInfo(true);
-    setLoadingRecommendation(true);
-    
-    try {
-      await Promise.all([
-        fetchTickers(),
-        fetchStockInfo(ticker),
-        fetchStockHistory(ticker, period),
-        fetchRecommendation(ticker),
-        fetchFoExpirations(ticker)
-      ]);
-    } catch (err) {
-      console.error("Failed to fetch dashboard data:", err);
+  // Helper to get allowed intervals for a given period
+  const getIntervalOptionsForPeriod = (period: string) => {
+    switch (period) {
+      case "1D":
+        return [
+          { value: "1m", label: "1 Min" },
+          { value: "2m", label: "2 Mins" },
+          { value: "5m", label: "5 Mins" },
+          { value: "15m", label: "15 Mins" },
+          { value: "30m", label: "30 Mins" }
+        ];
+      case "5D":
+        return [
+          { value: "5m", label: "5 Mins" },
+          { value: "15m", label: "15 Mins" },
+          { value: "30m", label: "30 Mins" },
+          { value: "1h", label: "1 Hour" },
+          { value: "1d", label: "1 Day" }
+        ];
+      case "1M":
+      case "6M":
+        return [
+          { value: "30m", label: "30 Mins" },
+          { value: "1h", label: "1 Hour" },
+          { value: "1d", label: "1 Day" },
+          { value: "1wk", label: "1 Week" }
+        ];
+      case "1Y":
+      case "5Y":
+      case "Max":
+      default:
+        return [
+          { value: "1d", label: "1 Day" },
+          { value: "1wk", label: "1 Week" },
+          { value: "1mo", label: "1 Month" }
+        ];
     }
-  }
+  };
+
+  // Auto-set sensible default interval when period changes
+  useEffect(() => {
+    let defaultVal = "1d";
+    if (timePeriod === "1D") defaultVal = "5m";
+    else if (timePeriod === "5D") defaultVal = "15m";
+    else if (timePeriod === "1M") defaultVal = "1d";
+    else if (timePeriod === "5Y") defaultVal = "1wk";
+    else if (timePeriod === "Max") defaultVal = "1mo";
+    setChartInterval(defaultVal);
+  }, [timePeriod]);
+
+  // Live Feed Simulation ticking
+  useEffect(() => {
+    if (!isLiveFeedActive) return;
+
+    const intervalId = setInterval(() => {
+      setCurrentStockInfo((prevInfo: any) => {
+        if (!prevInfo) return prevInfo;
+        
+        const currentPrice = prevInfo.currentPrice || prevInfo.close || 0;
+        if (currentPrice <= 0) return prevInfo;
+
+        // Apply a random tick change of +/- 0.05%
+        const changePct = (Math.random() - 0.5) * 0.001; // -0.05% to +0.05%
+        const newPrice = Number((currentPrice * (1 + changePct)).toFixed(2));
+        
+        // Update stock history for dynamic charting (appends/edits last index)
+        setStockHistory(prevHistory => {
+          if (!prevHistory || prevHistory.length === 0) return prevHistory;
+          const nextHistory = [...prevHistory];
+          const lastIdx = nextHistory.length - 1;
+          const lastNode = { ...nextHistory[lastIdx] };
+          
+          lastNode.Close = newPrice;
+          if (newPrice > (lastNode.High || 0)) lastNode.High = newPrice;
+          if (newPrice < (lastNode.Low || Infinity)) lastNode.Low = newPrice;
+          
+          nextHistory[lastIdx] = lastNode;
+          return nextHistory;
+        });
+
+        // Ticks option premiums in the Option Chain (Call up/Put down or vice versa)
+        const diff = newPrice - currentPrice;
+        if (diff !== 0) {
+          setFoOptionChain((prevChain: any) => {
+            if (!prevChain) return prevChain;
+            const nextChain = { ...prevChain };
+            if (nextChain.calls) {
+              nextChain.calls = nextChain.calls.map((c: any) => {
+                // Delta estimate
+                const delta = 1 / (1 + Math.exp(-(newPrice - c.strike) / (c.strike * 0.1)));
+                const newOptPrice = Math.max(0.05, (c.lastPrice || 0) + diff * delta);
+                return { ...c, lastPrice: Number(newOptPrice.toFixed(2)) };
+              });
+            }
+            if (nextChain.puts) {
+              nextChain.puts = nextChain.puts.map((p: any) => {
+                // Delta estimate
+                const delta = -1 / (1 + Math.exp((newPrice - p.strike) / (p.strike * 0.1)));
+                const newOptPrice = Math.max(0.05, (p.lastPrice || 0) + diff * delta);
+                return { ...p, lastPrice: Number(newOptPrice.toFixed(2)) };
+              });
+            }
+            return nextChain;
+          });
+        }
+
+        const updated = { ...prevInfo };
+        updated.currentPrice = newPrice;
+        if (newPrice > (updated.high || 0)) updated.high = newPrice;
+        if (newPrice < (updated.low || Infinity)) updated.low = newPrice;
+        return updated;
+      });
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [isLiveFeedActive]);
+
+  // Fetch stock dashboard data (tickers, info, history, recommendation) when selected stock, time period or interval changes
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      prevTickerRef.current = selectedTicker;
+      
+      setIsLiveFeedActive(false);
+      setLoadingInfo(true);
+      setLoadingRecommendation(true);
+      setLoadingHistory(true);
+      
+      Promise.all([
+        fetchStockInfo(selectedTicker),
+        fetchStockHistory(selectedTicker, timePeriod, chartInterval),
+        fetchRecommendation(selectedTicker)
+      ]).catch(err => console.error("Failed to load initial stock data:", err));
+      return;
+    }
+
+    if (prevTickerRef.current !== selectedTicker) {
+      // Ticker changed! Fetch everything.
+      prevTickerRef.current = selectedTicker;
+      
+      setIsLiveFeedActive(false);
+      setCurrentStockInfo(null);
+      setStockHistory([]);
+      setAiRecommendation(null);
+      
+      setLoadingInfo(true);
+      setLoadingRecommendation(true);
+      setLoadingHistory(true);
+      
+      Promise.all([
+        fetchStockInfo(selectedTicker),
+        fetchStockHistory(selectedTicker, timePeriod, chartInterval),
+        fetchRecommendation(selectedTicker)
+      ]).catch(err => console.error("Failed to load stock data:", err));
+    } else {
+      // Ticker is the same, but timePeriod or chartInterval changed! Only fetch history.
+      fetchStockHistory(selectedTicker, timePeriod, chartInterval);
+    }
+  }, [selectedTicker, timePeriod, chartInterval]);
 
   async function fetchTickers() {
     try {
@@ -887,13 +1086,12 @@ export default function Dashboard() {
     }
   };
 
-  async function fetchStockHistory(ticker: string, period: string = "1Y") {
+  async function fetchStockHistory(ticker: string, period: string = "1Y", interval: string = "") {
     const periodMap: Record<string, string> = {
       "1D": "1d",
       "5D": "5d",
       "1M": "1mo",
       "6M": "6mo",
-      "YTD": "ytd",
       "1Y": "1y",
       "5Y": "5y",
       "Max": "max"
@@ -901,7 +1099,11 @@ export default function Dashboard() {
     const yfPeriod = periodMap[period] || "1y";
     setLoadingHistory(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/stock/${ticker}/history?period=${yfPeriod}`);
+      let url = `${BACKEND_URL}/api/stock/${ticker}/history?period=${yfPeriod}`;
+      if (interval) {
+        url += `&interval=${interval}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setStockHistory(data);
@@ -911,6 +1113,93 @@ export default function Dashboard() {
     } finally {
       setLoadingHistory(false);
     }
+  };
+
+  const handleChartClick = (e: any) => {
+    if (activeDrawingTool === "none") return;
+    if (!e || e.activeTooltipIndex === undefined || !e.activePayload || e.activePayload.length === 0) return;
+    
+    const idx = e.activeTooltipIndex;
+    const price = Number(e.activePayload[0].payload.Close || e.activePayload[0].value);
+    const date = e.activePayload[0].payload.Date;
+    
+    if (activeDrawingTool === "trendline") {
+      const newPoints = [...drawingPoints, { index: idx, price: price, date: date }];
+      if (newPoints.length === 1) {
+        setDrawingPoints(newPoints);
+        showToast("First point set! Click a second point on the chart to draw the Trendline.", "success");
+      } else if (newPoints.length === 2) {
+        const p1 = newPoints[0];
+        const p2 = newPoints[1];
+        
+        if (p1.index === p2.index) {
+          showToast("Cannot draw trendline on the same point. Choose a different point.", "error");
+          setDrawingPoints([]);
+          setActiveDrawingTool("none");
+          return;
+        }
+        
+        const m = (p2.price - p1.price) / (p2.index - p1.index);
+        const c = p1.price - m * p1.index;
+        
+        const newDrawing = {
+          id: Date.now(),
+          type: "trendline",
+          m: m,
+          c: c,
+          startIndex: Math.min(p1.index, p2.index),
+          endIndex: Math.max(p1.index, p2.index),
+          startPoint: p1,
+          endPoint: p2
+        };
+        
+        setSavedDrawings([...savedDrawings, newDrawing]);
+        setDrawingPoints([]);
+        setActiveDrawingTool("none");
+        showToast("Trendline completed!", "success");
+      }
+    } else if (activeDrawingTool === "fibonacci") {
+      const newPoints = [...drawingPoints, { index: idx, price: price, date: date }];
+      if (newPoints.length === 1) {
+        setDrawingPoints(newPoints);
+        showToast("First extreme point set! Click a second point representing the opposite extreme (High/Low) to plot Fibonacci retracements.", "success");
+      } else if (newPoints.length === 2) {
+        const p1 = newPoints[0];
+        const p2 = newPoints[1];
+        
+        const highPrice = Math.max(p1.price, p2.price);
+        const lowPrice = Math.min(p1.price, p2.price);
+        
+        const newDrawing = {
+          id: Date.now(),
+          type: "fibonacci",
+          high: highPrice,
+          low: lowPrice,
+          p1: p1,
+          p2: p2
+        };
+        
+        setSavedDrawings([...savedDrawings, newDrawing]);
+        setDrawingPoints([]);
+        setActiveDrawingTool("none");
+        showToast("Fibonacci Retracements plotted!", "success");
+      }
+    }
+  };
+
+  const getProcessedChartData = () => {
+    if (savedDrawings.length === 0) return stockHistory;
+    
+    return stockHistory.map((row, idx) => {
+      const newRow = { ...row };
+      savedDrawings.forEach(d => {
+        if (d.type === "trendline") {
+          const val = d.m * idx + d.c;
+          newRow[`trendline_${d.id}`] = val;
+        }
+      });
+      return newRow;
+    });
   };
 
   async function fetchStockInfo(ticker: string) {
@@ -1012,12 +1301,12 @@ export default function Dashboard() {
   }
 
   async function resetPaperTrading() {
-    if (!window.confirm("Are you sure you want to reset your paper trading balance and clear all trades history?")) return;
+    setShowResetConfirm(false);
     try {
       const res = await fetch(`${BACKEND_URL}/api/paper/reset`, { method: "POST" });
       if (res.ok) {
         fetchPaperPortfolio();
-        alert("Account reset successfully!");
+        showToast("Account reset successfully!", "success");
       }
     } catch (err) {
       console.error("Failed to reset account:", err);
@@ -1058,8 +1347,9 @@ export default function Dashboard() {
         setAlertMessage(data.message);
         setAlertValue("");
         fetchAlerts();
+        showToast(data.message || "Alert created successfully!", "success");
       } else {
-        alert(data.detail || "Failed to create alert.");
+        showToast(data.detail || "Failed to create alert.", "error");
       }
     } catch (err) {
       console.error("Failed to create alert:", err);
@@ -1139,7 +1429,7 @@ export default function Dashboard() {
       if (res.ok) {
         setNewTicker("");
         fetchTickers();
-        alert(`Successfully added ${tickerToAdd} to watchlist.`);
+        showToast(`Added ${tickerToAdd} to watchlist.`, "success");
       } else {
         let err: any = {};
         try {
@@ -1147,7 +1437,7 @@ export default function Dashboard() {
         } catch (e) {
           err = { detail: "Failed to parse error details from server." };
         }
-        alert(err.detail || "Failed to add ticker");
+        showToast(err.detail || "Failed to add ticker", "error");
       }
     } catch (err) {
       console.error("Error adding ticker:", err);
@@ -1250,7 +1540,7 @@ export default function Dashboard() {
         const data = await res.json();
         setOptResults(data);
       } else {
-        alert("Optimization failed. Verify tickers have historical data.");
+        showToast("Optimization failed. Verify tickers have historical data.", "error");
       }
     } catch (err) {
       console.error("Error optimizing:", err);
@@ -1275,7 +1565,7 @@ export default function Dashboard() {
         })
       });
       if (res.ok) {
-        alert("Portfolio saved successfully!");
+        showToast("Portfolio saved successfully!", "success");
         fetchSavedPortfolios();
       }
     } catch (err) {
@@ -1387,27 +1677,15 @@ export default function Dashboard() {
 
   // Returns currency symbol based on ticker exchange
   const getCurrencySymbol = (ticker: string): string => {
-    const upper = ticker.toUpperCase();
-    if (upper.endsWith(".NS") || upper.endsWith(".BO")) return "₹";
-    if (upper.endsWith(".L") || upper.endsWith(".LON")) return "£";
-    if (upper.endsWith(".PA") || upper.endsWith(".DE") || upper.endsWith(".AMS") || upper.endsWith(".MI")) return "€";
-    if (upper.endsWith(".TO") || upper.endsWith(".V")) return "C$";
-    if (upper.endsWith(".AX")) return "A$";
-    if (upper.endsWith(".HK")) return "HK$";
-    if (upper.endsWith(".SG")) return "S$";
-    if (upper.includes("-USD") || upper.includes("=X")) return "$";
-    return "$";
+    return "₹";
   };
   const currencySymbol = getCurrencySymbol(selectedTicker);
 
   const formatMarketCap = (val: number | undefined | null) => {
     if (!val) return "N/A";
-    if (val >= 1e12) return `${currencySymbol}${(val / 1e12).toFixed(2)}T`;
-    if (val >= 1e9) return `${currencySymbol}${(val / 1e9).toFixed(2)}B`;
-    if (val >= 1e7) return `${currencySymbol}${(val / 1e7).toFixed(2)} Cr`;
-    if (val >= 1e6) return `${currencySymbol}${(val / 1e6).toFixed(2)}M`;
-    if (val >= 1e5) return `${currencySymbol}${(val / 1e5).toFixed(2)} L`;
-    return `${currencySymbol}${val.toLocaleString()}`;
+    if (val >= 1e7) return `${currencySymbol}${(val / 1e7).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2})} Cr`;
+    if (val >= 1e5) return `${currencySymbol}${(val / 1e5).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2})} L`;
+    return `${currencySymbol}${val.toLocaleString("en-IN")}`;
   };
 
 
@@ -1568,7 +1846,20 @@ export default function Dashboard() {
   return (
     <div className={`flex-1 flex flex-col font-sans overflow-x-hidden min-h-screen pb-24 md:pb-0 transition-colors duration-300 ${theme === "dark" ? "dark" : ""} ${themeClasses.bg}`}>
       
-      {/* Header NavBar */}
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className={`fixed top-5 right-5 z-[9999] flex items-center space-x-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-semibold transition-all animate-fade-in ${
+          toastType === "success"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/80 dark:border-emerald-700 dark:text-emerald-200"
+            : "bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-900/80 dark:border-rose-700 dark:text-rose-200"
+        }`}>
+          <span>{toastType === "success" ? "✓" : "✕"}</span>
+          <span>{toastMessage}</span>
+          <button onClick={() => setToastMessage("")} className="ml-2 opacity-60 hover:opacity-100 cursor-pointer text-lg leading-none">×</button>
+        </div>
+      )}
+
+
       <header className={`${theme === "light" ? "bg-white/80 border-slate-200 text-slate-900 shadow-sm" : "bg-[#0B0F19]/90 border-slate-800/60 text-white"} backdrop-blur-md px-4 py-3 md:px-6 md:py-4 flex items-center justify-between border-b sticky top-0 z-50`}>
         <div className="flex items-center space-x-2">
           <div className="bg-gradient-to-tr from-indigo-600 to-cyan-500 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
@@ -1583,6 +1874,7 @@ export default function Dashboard() {
         <nav className={`hidden md:flex space-x-2 p-1 border rounded-xl ${theme === "light" ? "bg-slate-50 border-slate-200" : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800"}`}>
           {[
             { id: "research", label: "Stock Analyst", icon: Activity },
+            { id: "derivatives", label: "Derivatives (F&O)", icon: TrendingUp },
             { id: "optimizer", label: "Portfolio Optimizer", icon: PieIcon },
             { id: "finance", label: "Wealth Planner", icon: Landmark },
             { id: "backtesting", label: "Strategy Backtester", icon: History },
@@ -1831,73 +2123,18 @@ export default function Dashboard() {
             )}
 
             <div className="relative flex flex-col space-y-6">
-              {(loadingInfo || loadingHistory || loadingRecommendation) && (
-                <div className="absolute inset-0 bg-slate-900/10 dark:bg-black/35 backdrop-blur-[2px] z-50 flex items-center justify-center rounded-2xl min-h-[450px]">
-                  <div className="bg-white/95 dark:bg-[#0F172A]/95 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col space-y-4 max-w-md w-full mx-4">
-                    <div className="flex items-center space-x-3 border-b border-slate-200 dark:border-slate-800 pb-3">
-                      <div className="bg-indigo-500/10 p-2 rounded-xl">
+              {(loadingInfo || loadingRecommendation) && (
+                <div className="absolute inset-0 bg-slate-950/20 dark:bg-black/45 backdrop-blur-[4px] z-50 flex items-center justify-center rounded-2xl min-h-[450px]">
+                  <div className="bg-white/95 dark:bg-[#0E1322]/95 border border-slate-200/85 dark:border-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col items-center justify-center space-y-4 text-center max-w-xs w-full mx-4 glassmorphic-card">
+                    <div className="relative">
+                      <div className="h-12 w-12 rounded-full border-4 border-indigo-500/10 border-t-indigo-500 animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
                         <Activity className="h-5 w-5 text-indigo-500 animate-pulse" />
                       </div>
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-800 dark:text-white">Financial Data Aggregation</h3>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Fetching and compiling market intelligence for {selectedTicker}...</p>
-                      </div>
                     </div>
-                    
-                    <div className="flex flex-col space-y-2">
-                      {[
-                        { 
-                          id: "info", 
-                          label: "Company Profile & Core Metrics", 
-                          desc: "Retrieving corporate summary, PE multiples, EPS, and ROE metrics.",
-                          isLoading: loadingInfo,
-                          hasData: !!currentStockInfo 
-                        },
-                        { 
-                          id: "history", 
-                          label: "Historical Prices & Technicals", 
-                          desc: "Aggregating daily stock history and calculating RSI, SMA, and MACD indicators.",
-                          isLoading: loadingHistory,
-                          hasData: stockHistory && stockHistory.length > 0
-                        },
-                        { 
-                          id: "recommendation", 
-                          label: "AI Recommendation & ML Model", 
-                          desc: "Generating live ML predictive signals and action recommendations.",
-                          isLoading: loadingRecommendation,
-                          hasData: !!aiRecommendation
-                        }
-                      ].map((step) => {
-                        let stepState: "completed" | "active" | "pending" = "pending";
-                        if (step.isLoading) {
-                          stepState = "active";
-                        } else if (step.hasData) {
-                          stepState = "completed";
-                        }
-                        
-                        return (
-                          <div 
-                            key={step.id} 
-                            className={`p-3 rounded-xl border flex items-start space-x-3 transition-all duration-300 ${
-                              stepState === "completed" 
-                                ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400" 
-                                : stepState === "active"
-                                ? "bg-indigo-500/5 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 active-pulse"
-                                : "bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-slate-900 text-slate-400 dark:text-slate-500"
-                            }`}
-                          >
-                            <div className="mt-0.5 shrink-0">
-                              {stepState === "completed" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                              {stepState === "active" && <RefreshCw className="h-4 w-4 text-indigo-500 animate-spin" />}
-                              {stepState === "pending" && <HelpCircle className="h-4 w-4 opacity-40 text-slate-400" />}
-                            </div>
-                            <div className="min-w-0">
-                              <h4 className={`text-[11px] font-extrabold tracking-tight ${stepState === "pending" ? "text-slate-400 dark:text-slate-600" : "text-slate-700 dark:text-slate-200"}`}>{step.label}</h4>
-                              <p className="text-[10px] leading-relaxed opacity-75 mt-0.5">{step.desc}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-850 dark:text-white">Analyzing Market Intelligence</h3>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Aggregating real-time financial datasets for {selectedTicker}...</p>
                     </div>
                   </div>
                 </div>
@@ -1925,7 +2162,18 @@ export default function Dashboard() {
                        }`}>
                          {currentStock.currentPrice - currentStock.close >= 0 ? "▲ +" : "▼ "}{(((currentStock.currentPrice - currentStock.close) / (currentStock.close || 1)) * 100).toFixed(2)}%
                        </span>
-                       <span className="text-4xs text-slate-400 uppercase font-semibold">Live Simulation</span>
+                        <button
+                          onClick={() => setIsLiveFeedActive(!isLiveFeedActive)}
+                          className={`text-4xs font-black uppercase flex items-center gap-1 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                            isLiveFeedActive
+                              ? "bg-emerald-500/15 border-emerald-500/35 text-emerald-600 dark:text-emerald-400 animate-pulse"
+                              : "bg-slate-100 dark:bg-[#0E1322] border-slate-200 dark:border-slate-800 text-slate-450 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-350"
+                          }`}
+                          title="Toggle live price ticks (+/- 0.05% every 2 seconds)"
+                        >
+                          <Activity className="h-2.5 w-2.5" />
+                          <span>{isLiveFeedActive ? "Live Feed: Active" : "Live Feed: Idle"}</span>
+                        </button>
                      </div>
                    </div>
                  </div>
@@ -1988,11 +2236,10 @@ export default function Dashboard() {
                   
                   {/* Workspace Navigation Tabs with gradient header */}
                   <div className="card-header-gradient px-4 py-4 md:px-6 md:py-4 border-b border-slate-200 dark:border-slate-800/80 mb-5 w-full">
-                    <div className="responsive-tabs-container flex text-xs md:text-sm font-semibold gap-x-4 md:gap-x-6 gap-y-2 w-full overflow-y-hidden pb-1 overflow-x-auto md:overflow-x-visible flex-nowrap md:flex-wrap">
+                    <div className="responsive-tabs-container flex text-xs md:text-sm font-semibold gap-x-4 md:gap-x-6 w-full overflow-x-auto scrollbar-none flex-nowrap pb-2">
                       {[
                         { id: "Overview", label: "Overview & Charts" },
                         { id: "Comparator", label: "Stock Comparator" },
-                        { id: "Derivatives", label: "Derivatives (F&O)" },
                         { id: "AI Research Hub", label: "AI Research Hub" },
                         { id: "Technical Indicators", label: "Technical Indicators" },
                         { id: "News Feed", label: "News Feed" }
@@ -2049,25 +2296,27 @@ export default function Dashboard() {
                             ))}
                           </div>
 
-                          {/* Timeframe Selectors */}
-                          <div className="flex space-x-1 overflow-x-auto scrollbar-none flex-nowrap max-w-full w-full md:w-auto pb-1 md:pb-0">
-                            {["1D", "5D", "1M", "6M", "YTD", "1Y", "5Y", "Max"].map(period => (
-                              <button
-                                key={period}
-                                onClick={() => setTimePeriod(period)}
-                                className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all border whitespace-nowrap ${
-                                  timePeriod === period 
-                                    ? theme === "light"
-                                      ? "bg-white text-indigo-600 border-slate-300 shadow-2xs"
-                                      : "bg-slate-800 text-indigo-405 border-slate-700 shadow-2xs"
-                                    : theme === "light"
-                                      ? "text-slate-600 border-transparent hover:text-slate-900"
-                                      : "text-slate-400 border-transparent hover:text-slate-300"
-                                }`}
-                              >
-                                {period}
-                              </button>
-                            ))}
+                          {/* Timeframe & Interval Selectors */}
+                          <div className="flex items-center space-x-3 overflow-x-auto scrollbar-none flex-nowrap max-w-full w-full md:w-auto pb-1 md:pb-0">
+                            <div className="flex space-x-1 border-r pr-3 border-slate-250 dark:border-slate-800/80">
+                              {["1D", "5D", "1M", "6M", "1Y", "5Y", "Max"].map(period => (
+                                <button
+                                  key={period}
+                                  onClick={() => setTimePeriod(period)}
+                                  className={`px-2.5 py-1 rounded text-3xs font-extrabold transition-all border whitespace-nowrap ${
+                                    timePeriod === period 
+                                      ? theme === "light"
+                                        ? "bg-white text-indigo-600 border-slate-300 shadow-2xs"
+                                        : "bg-slate-850 text-indigo-400 border-slate-700 shadow-2xs"
+                                      : theme === "light"
+                                        ? "text-slate-600 border-transparent hover:text-slate-900"
+                                        : "text-slate-400 border-transparent hover:text-slate-300"
+                                  }`}
+                                >
+                                  {period}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         </div>
 
@@ -2087,7 +2336,7 @@ export default function Dashboard() {
                               <>
                                 {chartSubView === "price" && (
                                   <ResponsiveContainer width="100%" height={300} minWidth={0}>
-                                    <AreaChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+                                    <AreaChart data={getProcessedChartData()} onClick={handleChartClick} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <defs>
                                         <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
                                           <stop offset="5%" stopColor="#6366F1" stopOpacity={0.25}/>
@@ -2095,25 +2344,95 @@ export default function Dashboard() {
                                         </linearGradient>
                                       </defs>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
-                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
+                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} tickFormatter={cleanChartDateFormatter} />
                                       <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? v.toFixed(2) : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Area type="monotone" dataKey="Close" stroke="#6366F1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorClose)" name="Close Price" />
+                                      
+                                      {/* Saved Drawings */}
+                                      {savedDrawings.filter(d => d.type === "trendline").map(d => (
+                                        <Line 
+                                          key={d.id} 
+                                          dataKey={`trendline_${d.id}`} 
+                                          stroke="#F59E0B" 
+                                          strokeWidth={2} 
+                                          dot={false} 
+                                          activeDot={false} 
+                                          name="Trendline" 
+                                        />
+                                      ))}
+                                      {savedDrawings.filter(d => d.type === "fibonacci").flatMap(d => {
+                                        const range = d.high - d.low;
+                                        const levels = [
+                                          { pct: "0%", val: d.low, color: "#EF4444" },
+                                          { pct: "23.6%", val: d.low + 0.236 * range, color: "#F59E0B" },
+                                          { pct: "38.2%", val: d.low + 0.382 * range, color: "#10B981" },
+                                          { pct: "50.0%", val: d.low + 0.500 * range, color: "#3B82F6" },
+                                          { pct: "61.8%", val: d.low + 0.618 * range, color: "#6366F1" },
+                                          { pct: "78.6%", val: d.low + 0.786 * range, color: "#8B5CF6" },
+                                          { pct: "100%", val: d.high, color: "#EF4444" }
+                                        ];
+                                        return levels.map((l, lIdx) => (
+                                          <ReferenceLine 
+                                            key={`${d.id}-${lIdx}`} 
+                                            y={l.val} 
+                                            stroke={l.color} 
+                                            strokeDasharray="3 3" 
+                                            strokeWidth={1}
+                                            label={{ value: `FIB ${l.pct} (₹${l.val.toFixed(2)})`, position: "insideLeft", fontSize: 7, fill: l.color }}
+                                          />
+                                        ));
+                                      })}
                                     </AreaChart>
                                   </ResponsiveContainer>
                                 )}
 
                                 {chartSubView === "ma" && (
                                   <ResponsiveContainer width="100%" height={300} minWidth={0}>
-                                    <LineChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+                                    <LineChart data={getProcessedChartData()} onClick={handleChartClick} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
-                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
+                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} tickFormatter={cleanChartDateFormatter} />
                                       <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? v.toFixed(2) : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
                                       <Line type="monotone" dataKey="Close" stroke="#6366F1" strokeWidth={2.5} dot={false} name="Closing Price" />
                                       <Line type="monotone" dataKey="MA_10" stroke="#3B82F6" strokeWidth={1.5} dot={false} name="10 SMA" />
                                       <Line type="monotone" dataKey="MA_50" stroke="#F59E0B" strokeWidth={1.5} dot={false} name="50 SMA" />
+                                      
+                                      {/* Saved Drawings */}
+                                      {savedDrawings.filter(d => d.type === "trendline").map(d => (
+                                        <Line 
+                                          key={d.id} 
+                                          dataKey={`trendline_${d.id}`} 
+                                          stroke="#F59E0B" 
+                                          strokeWidth={2} 
+                                          dot={false} 
+                                          activeDot={false} 
+                                          name="Trendline" 
+                                        />
+                                      ))}
+                                      {savedDrawings.filter(d => d.type === "fibonacci").flatMap(d => {
+                                        const range = d.high - d.low;
+                                        const levels = [
+                                          { pct: "0%", val: d.low, color: "#EF4444" },
+                                          { pct: "23.6%", val: d.low + 0.236 * range, color: "#F59E0B" },
+                                          { pct: "38.2%", val: d.low + 0.382 * range, color: "#10B981" },
+                                          { pct: "50.0%", val: d.low + 0.500 * range, color: "#3B82F6" },
+                                          { pct: "61.8%", val: d.low + 0.618 * range, color: "#6366F1" },
+                                          { pct: "78.6%", val: d.low + 0.786 * range, color: "#8B5CF6" },
+                                          { pct: "100%", val: d.high, color: "#EF4444" }
+                                        ];
+                                        return levels.map((l, lIdx) => (
+                                          <ReferenceLine 
+                                            key={`${d.id}-${lIdx}`} 
+                                            y={l.val} 
+                                            stroke={l.color} 
+                                            strokeDasharray="3 3" 
+                                            strokeWidth={1}
+                                            label={{ value: `FIB ${l.pct} (₹${l.val.toFixed(2)})`, position: "insideLeft", fontSize: 7, fill: l.color }}
+                                          />
+                                        ));
+                                      })}
                                     </LineChart>
                                   </ResponsiveContainer>
                                 )}
@@ -2122,7 +2441,7 @@ export default function Dashboard() {
                                   <ResponsiveContainer width="100%" height={300} minWidth={0}>
                                     <LineChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
-                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
+                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} tickFormatter={cleanChartDateFormatter} />
                                       <YAxis domain={[0, 100]} stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? v.toFixed(2) : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
@@ -2137,7 +2456,7 @@ export default function Dashboard() {
                                   <ResponsiveContainer width="100%" height={300} minWidth={0}>
                                     <ComposedChart data={stockHistory} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
-                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
+                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} tickFormatter={cleanChartDateFormatter} />
                                       <YAxis domain={["auto", "auto"]} stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? v.toFixed(2) : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? v.toFixed(2) : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
@@ -2646,7 +2965,7 @@ export default function Dashboard() {
                                   <ResponsiveContainer width="100%" height={220} minWidth={0}>
                                     <LineChart data={compareData.normalized_history} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
-                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
+                                      <XAxis dataKey="Date" stroke="#64748B" fontSize={8} tickFormatter={cleanChartDateFormatter} />
                                       <YAxis unit="%" stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? `${v.toFixed(2)}%` : v} />
                                       <Tooltip formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)}%` : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                       <Legend wrapperStyle={{ fontSize: 9 }} />
@@ -2827,466 +3146,6 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {/* 6. DERIVATIVES (F&O) WORKSTATION TAB */}
-                    {activeWorkspaceTab === "Derivatives" && (
-                      <div className="space-y-6">
-                        {/* Expiry / Broker Connect Toolbar */}
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-900/30">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <div>
-                              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Contract Expiration</label>
-                              <select 
-                                value={selectedFoExpiry}
-                                onChange={(e) => {
-                                  setSelectedFoExpiry(e.target.value);
-                                  fetchFoOptionChain(selectedTicker, e.target.value);
-                                }}
-                                className={`text-xs py-1.5 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
-                              >
-                                {foExpirations.map(date => (
-                                  <option key={date} value={date}>{date}</option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Strategy Templates</label>
-                              <select 
-                                value={foStrategy}
-                                onChange={(e) => applyPredefinedStrategy(e.target.value)}
-                                className={`text-xs py-1.5 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
-                              >
-                                <option value="None">Custom Strategy</option>
-                                <option value="LongCall">Long Call (Buy Call)</option>
-                                <option value="LongPut">Long Put (Buy Put)</option>
-                                <option value="BullCallSpread">Bull Call Spread</option>
-                                <option value="BearPutSpread">Bear Put Spread</option>
-                                <option value="Straddle">Long Straddle</option>
-                                <option value="Strangle">Long Strangle</option>
-                                <option value="IronCondor">Iron Condor</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {/* Workstation Sub-Tabs */}
-                          <div className="flex border border-slate-200 dark:border-slate-800 rounded-lg p-1 bg-white dark:bg-slate-950 font-semibold text-3xs">
-                            {[
-                              { id: "Chain", label: "Option Chain" },
-                              { id: "Analysis", label: "ML Analytics & Greeks" },
-                              { id: "Simulator", label: "Payoff Simulator" },
-                              { id: "Broker", label: "Broker Gateway" }
-                            ].map(t => (
-                              <button
-                                key={t.id}
-                                onClick={() => setFoTab(t.id as any)}
-                                className={`px-3 py-1.5 rounded-md cursor-pointer transition-all ${
-                                  foTab === t.id 
-                                    ? "bg-indigo-600 text-white shadow-sm" 
-                                    : "text-slate-400 hover:text-slate-200"
-                                }`}
-                              >
-                                {t.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {foLoading ? (
-                          <div className="text-center py-24 text-slate-400 text-xs font-semibold">
-                            <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2.5 text-indigo-500" />
-                            Synchronizing live derivatives data...
-                          </div>
-                        ) : (
-                          <>
-                            {/* SUB TAB 1: OPTION CHAIN GRID */}
-                            {foTab === "Chain" && foOptionChain && (
-                              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-white dark:bg-[#0E1322]/20">
-                                <div className="card-header-gradient px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center text-3xs uppercase tracking-wider font-extrabold text-slate-400">
-                                  <span>CALL OPTIONS</span>
-                                  <span className="text-indigo-400 font-black">STRIKE PRICE</span>
-                                  <span>PUT OPTIONS</span>
-                                </div>
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-center text-3xs border-collapse">
-                                    <thead>
-                                      <tr className="border-b border-slate-200 dark:border-slate-850/60 bg-slate-50/50 dark:bg-slate-950/20 text-slate-450 uppercase font-extrabold">
-                                        <th className="p-2.5">Delta</th>
-                                        <th className="p-2.5">IV</th>
-                                        <th className="p-2.5">Bid</th>
-                                        <th className="p-2.5">Ask</th>
-                                        <th className="p-2.5 border-r border-slate-200 dark:border-slate-800">LTP</th>
-                                        <th className="p-2.5 font-bold text-slate-900 dark:text-white">Strike</th>
-                                        <th className="p-2.5 border-l border-slate-200 dark:border-slate-800">LTP</th>
-                                        <th className="p-2.5">Ask</th>
-                                        <th className="p-2.5">Bid</th>
-                                        <th className="p-2.5">IV</th>
-                                        <th className="p-2.5">Delta</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-850/40">
-                                      {foOptionChain.calls.map((c: any, index: number) => {
-                                        const strike = c.strike;
-                                        const p = foOptionChain.puts.find((x: any) => x.strike === strike) || {};
-                                        const isItmCall = foOptionChain.spotPrice > strike;
-                                        const isItmPut = foOptionChain.spotPrice < strike;
-                                        
-                                        return (
-                                          <tr key={strike} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
-                                            {/* CALL DETAILS */}
-                                            <td className={`p-2.5 ${isItmCall ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{c.delta}</td>
-                                            <td className={`p-2.5 ${isItmCall ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{(c.impliedVolatility * 100).toFixed(1)}%</td>
-                                            <td className={`p-2.5 ${isItmCall ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{currencySymbol}{c.bid?.toFixed(2)}</td>
-                                            <td className={`p-2.5 ${isItmCall ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{currencySymbol}{c.ask?.toFixed(2)}</td>
-                                            <td className={`p-2.5 border-r border-slate-200 dark:border-slate-800/80 font-bold text-slate-800 dark:text-slate-200 flex items-center justify-center space-x-1.5 ${isItmCall ? "bg-emerald-500/10 dark:bg-emerald-500/5" : ""}`}>
-                                              <span>{currencySymbol}{c.lastPrice.toFixed(2)}</span>
-                                              <button 
-                                                onClick={() => executePaperFoTrade("CALL", "BUY", strike, c.lastPrice)}
-                                                className="bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] p-0.5 rounded cursor-pointer"
-                                                title="Add to Strategy Builder"
-                                              >
-                                                +
-                                              </button>
-                                            </td>
-
-                                            {/* STRIKE */}
-                                            <td className="p-2.5 font-black bg-slate-50 dark:bg-slate-950/40 text-indigo-500 dark:text-indigo-400 border-x border-slate-200 dark:border-slate-800">{strike.toFixed(2)}</td>
-
-                                            {/* PUT DETAILS */}
-                                            <td className={`p-2.5 border-l border-slate-200 dark:border-slate-800/80 font-bold text-slate-800 dark:text-slate-200 flex items-center justify-center space-x-1.5 ${isItmPut ? "bg-emerald-500/10 dark:bg-emerald-500/5" : ""}`}>
-                                              <span>{currencySymbol}{p.lastPrice?.toFixed(2)}</span>
-                                              <button 
-                                                onClick={() => executePaperFoTrade("PUT", "BUY", strike, p.lastPrice)}
-                                                className="bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] p-0.5 rounded cursor-pointer"
-                                                title="Add to Strategy Builder"
-                                              >
-                                                +
-                                              </button>
-                                            </td>
-                                            <td className={`p-2.5 ${isItmPut ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{currencySymbol}{p.ask?.toFixed(2)}</td>
-                                            <td className={`p-2.5 ${isItmPut ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{currencySymbol}{p.bid?.toFixed(2)}</td>
-                                            <td className={`p-2.5 ${isItmPut ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{(p.impliedVolatility * 100).toFixed(1)}%</td>
-                                            <td className={`p-2.5 ${isItmPut ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{p.delta}</td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* SUB TAB 2: ML ANALYTICS & GREEKS */}
-                            {foTab === "Analysis" && foMlForecast && (
-                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                {/* IV Smile Chart */}
-                                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E1322]/20">
-                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs mb-3">Implied Volatility Smile Curve</h4>
-                                  <div className="h-[220px]">
-                                    {isMounted && foOptionChain && (
-                                      <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={foOptionChain.calls} margin={{ left: -20, right: 10 }}>
-                                          <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" opacity={0.2} />
-                                          <XAxis dataKey="strike" tick={{ fontSize: 9 }} stroke="#718096" />
-                                          <YAxis tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} tick={{ fontSize: 9 }} stroke="#718096" />
-                                          <Tooltip formatter={(value: any) => [`${(value * 100).toFixed(2)}%`, "IV"]} />
-                                          <Line type="monotone" dataKey="impliedVolatility" stroke="#8884d8" strokeWidth={2} dot={{ r: 2 }} />
-                                        </LineChart>
-                                      </ResponsiveContainer>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* 5-Day IV Forecast */}
-                                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E1322]/20">
-                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs mb-3 flex items-center justify-between">
-                                    <span>5-Day Implied Volatility Forecast</span>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-extrabold uppercase ${foMlForecast.regime === "Expanding" ? "text-emerald-500 bg-emerald-500/10" : "text-rose-500 bg-rose-500/10"}`}>{foMlForecast.regime} Regime</span>
-                                  </h4>
-                                  <div className="h-[220px]">
-                                    {isMounted && foMlForecast.forecast_5d && (
-                                      <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={foMlForecast.forecast_5d} margin={{ left: -20, right: 10 }}>
-                                          <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" opacity={0.2} />
-                                          <XAxis dataKey="Day" tick={{ fontSize: 9 }} stroke="#718096" />
-                                          <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} stroke="#718096" />
-                                          <Tooltip formatter={(value: any) => [`${value}%`, "Predicted IV"]} />
-                                          <Line type="monotone" dataKey="IV" stroke="#10B981" strokeWidth={2} dot={{ r: 3 }} />
-                                        </LineChart>
-                                      </ResponsiveContainer>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* ML Underpriced/Overpriced Recommendations */}
-                                <div className="lg:col-span-2 space-y-3">
-                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs">ML Anomalies Recommendation Report</h4>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                                    {foOptionChain && foOptionChain.calls.slice(4, 9).map((c: any) => (
-                                      <div key={c.strike} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/10 flex flex-col justify-between space-y-2">
-                                        <div className="flex justify-between items-start">
-                                          <div>
-                                            <span className="text-3xs font-extrabold uppercase bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-655 dark:text-slate-400">CALL Strike {c.strike}</span>
-                                            <div className="text-2xs font-extrabold text-slate-800 dark:text-slate-200 mt-1">LTP: {currencySymbol}{c.lastPrice.toFixed(2)}</div>
-                                          </div>
-                                          <span className={`text-[10px] px-2 py-0.5 rounded font-black ${
-                                            c.recommendation.action === "BUY" ? "text-emerald-500 bg-emerald-500/10" : c.recommendation.action === "SELL" ? "text-rose-500 bg-rose-500/10" : "text-amber-500 bg-amber-500/10"
-                                          }`}>{c.recommendation.action}</span>
-                                        </div>
-                                        <div className="text-4xs text-slate-500 leading-relaxed">
-                                          Pricing is <span className="font-bold">{c.recommendation.status}</span> by {c.recommendation.divergence_pct}%. (Theory: {currencySymbol}{c.recommendation.theoretical_price})
-                                        </div>
-                                        <div className="w-full bg-slate-250 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
-                                          <div className={`h-full ${c.recommendation.action === "BUY" ? "bg-emerald-500" : c.recommendation.action === "SELL" ? "bg-rose-500" : "bg-amber-500"}`} style={{ width: `${c.recommendation.confidence}%` }}></div>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* SUB TAB 3: PAYOFF SIMULATOR */}
-                            {foTab === "Simulator" && (
-                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                {/* Payoff Diagram */}
-                                <div className="lg:col-span-2 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E1322]/20 flex flex-col space-y-4">
-                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs flex justify-between items-center">
-                                    <span>Derivatives Strategy Payoff Diagram</span>
-                                    <span className="text-[10px] text-slate-400">Lot Multiplier: {selectedTicker.endsWith(".NS") ? "50 Qty" : "100 Qty"}</span>
-                                  </h4>
-                                  <div className="h-[240px]">
-                                    {isMounted && foPayoffData.length > 0 ? (
-                                      <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={foPayoffData} margin={{ left: -20, right: 10 }}>
-                                          <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" opacity={0.2} />
-                                          <XAxis dataKey="UnderlyingPrice" tick={{ fontSize: 9 }} stroke="#718096" />
-                                          <YAxis tickFormatter={(v) => `${v >= 0 ? "+" : ""}${v}`} tick={{ fontSize: 9 }} stroke="#718096" />
-                                          <Tooltip formatter={(value: any) => [`${value >= 0 ? "₹" : "-₹"}${Math.abs(value)}`, "PnL"]} />
-                                          <ReferenceLine y={0} stroke="#E2E8F0" strokeWidth={1} strokeDasharray="3 3" />
-                                          <Area type="monotone" dataKey="PnL" stroke="#6366F1" fill="url(#pnlGrad)" />
-                                          <defs>
-                                            <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
-                                              <stop offset="5%" stopColor="#6366F1" stopOpacity={0.4}/>
-                                              <stop offset="95%" stopColor="#6366F1" stopOpacity={0.0}/>
-                                            </linearGradient>
-                                          </defs>
-                                        </AreaChart>
-                                      </ResponsiveContainer>
-                                    ) : (
-                                      <div className="text-center py-24 text-slate-500 text-xs">Build a strategy or add legs to simulate PnL payoff curve.</div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Strategy Leg Builder Panel */}
-                                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/10 flex flex-col justify-between space-y-4">
-                                  <div>
-                                    <h4 className="font-bold text-slate-800 dark:text-white text-xs mb-3">Leg Builder Registry</h4>
-                                    <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-                                      {foLegs.length === 0 ? (
-                                        <div className="text-center py-10 text-slate-500 text-3xs">No active legs in strategy. Select a template or add options from the chain grid.</div>
-                                      ) : (
-                                        foLegs.map((leg, idx) => (
-                                          <div key={idx} className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-[#0E1322] flex justify-between items-center text-3xs">
-                                            <div className="flex flex-col space-y-0.5">
-                                              <span className={`font-black ${leg.action === "BUY" ? "text-emerald-500" : "text-rose-500"}`}>{leg.action} {leg.option_type}</span>
-                                              <span className="text-slate-400 font-bold">Strike: {leg.strike} | Prem: {currencySymbol}{leg.premium}</span>
-                                            </div>
-                                            <button 
-                                              onClick={() => setFoLegs(prev => prev.filter((_, i) => i !== idx))}
-                                              className="text-slate-500 hover:text-rose-500 font-bold p-1 cursor-pointer"
-                                            >
-                                              ✕
-                                            </button>
-                                          </div>
-                                        ))
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* SUB TAB 4: BROKER GATEWAY */}
-                            {foTab === "Broker" && (
-                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                {/* Configuration form */}
-                                <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E1322]/20 flex flex-col space-y-4">
-                                  <h4 className="font-bold text-slate-900 dark:text-white text-xs border-b pb-2.5 border-slate-200 dark:border-slate-800">API Credentials Terminal</h4>
-                                  
-                                  <div className="space-y-3 text-3xs">
-                                    <div>
-                                      <label className="text-slate-500 font-bold uppercase tracking-wider block mb-1">Select Gateway Broker</label>
-                                      <select 
-                                        value={activeBroker}
-                                        onChange={(e) => setActiveBroker(e.target.value)}
-                                        className={`w-full py-2 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
-                                      >
-                                        <option value="None">Direct Sandbox Feed (Akamai WAF Bypass)</option>
-                                        <option value="Zerodha">Zerodha Kite Connect</option>
-                                        <option value="Upstox">Upstox API v2</option>
-                                        <option value="Dhan">DhanHQ Connect</option>
-                                      </select>
-                                    </div>
-
-                                    {activeBroker !== "None" && (
-                                      <>
-                                        <div>
-                                          <label className="text-slate-500 font-bold uppercase tracking-wider block mb-1">Client ID / API Key</label>
-                                          <input 
-                                            type="text"
-                                            value={brokerConfig.api_key}
-                                            onChange={(e) => setBrokerConfig({...brokerConfig, api_key: e.target.value})}
-                                            placeholder="Enter Developer API Key"
-                                            className={`w-full py-2 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="text-slate-500 font-bold uppercase tracking-wider block mb-1">Access Token</label>
-                                          <input 
-                                            type="password"
-                                            value={brokerConfig.access_token}
-                                            onChange={(e) => setBrokerConfig({...brokerConfig, access_token: e.target.value})}
-                                            placeholder="Enter Authorization Access Token"
-                                            className={`w-full py-2 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
-                                          />
-                                        </div>
-                                      </>
-                                    )}
-
-                                    <button 
-                                      onClick={() => {
-                                        if (activeBroker === "None") {
-                                          setBrokerConnected(false);
-                                        } else {
-                                          if (!brokerConfig.api_key || !brokerConfig.access_token) {
-                                            alert("Please enter API Key and Access Token credentials.");
-                                            return;
-                                          }
-                                          setBrokerConnected(true);
-                                        }
-                                      }}
-                                      className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl shadow-md cursor-pointer transition-all text-2xs"
-                                    >
-                                      {activeBroker === "None" ? "Switch to Sandbox Sandbox" : "Establish Secure Broker Connection"}
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Connection status / details */}
-                                <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/10 flex flex-col justify-between space-y-4">
-                                  <div>
-                                    <h4 className="font-bold text-slate-850 dark:text-slate-200 text-xs">Broker Gateway Status</h4>
-                                    <div className="mt-4 space-y-3 text-3xs">
-                                      <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-800/80">
-                                        <span className="text-slate-400 font-bold">Active Protocol</span>
-                                        <span className="font-black uppercase text-indigo-500">{activeBroker === "None" ? "Sandbox Feed" : activeBroker}</span>
-                                      </div>
-                                      <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-800/80">
-                                        <span className="text-slate-400 font-bold">Connection State</span>
-                                        <div className="flex items-center space-x-1.5">
-                                          <span className={`h-2.5 w-2.5 rounded-full ${brokerConnected || activeBroker === "None" ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`}></span>
-                                          <span className="font-black">{brokerConnected || activeBroker === "None" ? "ESTABLISHED" : "DISCONNECTED"}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="p-3.5 rounded-lg bg-indigo-600/5 text-4xs leading-relaxed text-indigo-400/80 border border-indigo-550/10">
-                                    🔌 <span className="font-black">Integrator Note:</span> Under production, the broker gateway uses exchange authorized endpoints (`kite.quote` or `upstox-feed`). The sandbox feeds run Black-Scholes Greeks simulations natively in Python.
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* PAPER DERIVATIVES TRADING AND POSITIONS PANEL */}
-                            {foTab === "Simulator" && (
-                              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-white dark:bg-[#0E1322]/20 space-y-4 mt-6">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
-                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs flex items-center gap-1.5">
-                                    <Wallet className="h-4.5 w-4.5 text-indigo-500" />
-                                    <span>Derivatives Simulator Portfolio</span>
-                                  </h4>
-                                  <div className="flex flex-wrap items-center gap-3 text-3xs font-extrabold">
-                                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 py-1.5 px-3 rounded-lg text-slate-400">
-                                      Cash Balance: <span className="text-slate-900 dark:text-slate-100 font-bold">{currencySymbol}{foCashBalance.toLocaleString("en-IN")}</span>
-                                    </div>
-                                    <button 
-                                      onClick={() => {
-                                        setFoCashBalance(1000000);
-                                        setFoPositionList([]);
-                                      }}
-                                      className="bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 px-3 rounded-lg shadow cursor-pointer transition-all"
-                                    >
-                                      Reset Simulator
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-center text-3xs">
-                                    <thead>
-                                      <tr className="bg-slate-50/50 dark:bg-slate-950/20 text-slate-450 uppercase font-black border-b border-slate-200 dark:border-slate-800/80">
-                                        <th className="p-2.5">Symbol</th>
-                                        <th className="p-2.5">Contract</th>
-                                        <th className="p-2.5">Action</th>
-                                        <th className="p-2.5">Quantity</th>
-                                        <th className="p-2.5">Entry Premium</th>
-                                        <th className="p-2.5">Current Value</th>
-                                        <th className="p-2.5 font-bold">Unrealized P&L</th>
-                                        <th className="p-2.5">Actions</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-850/40">
-                                      {foPositionList.length === 0 ? (
-                                        <tr>
-                                          <td colSpan={8} className="p-6 text-center text-slate-500">No active derivatives positions. Purchase contracts from the Option Chain table.</td>
-                                        </tr>
-                                      ) : (
-                                        foPositionList.map((pos) => {
-                                          let livePrice = pos.entry_price;
-                                          if (foOptionChain) {
-                                            const list = pos.option_type === "CALL" ? foOptionChain.calls : foOptionChain.puts;
-                                            const currentOpt = list.find((o: any) => o.strike === pos.strike);
-                                            if (currentOpt) {
-                                              livePrice = currentOpt.lastPrice;
-                                            }
-                                          }
-                                          const mult = pos.action === "BUY" ? 1 : -1;
-                                          const pnl = (livePrice - pos.entry_price) * pos.quantity * mult;
-                                          
-                                          return (
-                                            <tr key={pos.id} className="hover:bg-slate-50/30 dark:hover:bg-slate-900/5">
-                                              <td className="p-2.5 font-bold text-slate-900 dark:text-white">{pos.ticker}</td>
-                                              <td className="p-2.5">{pos.option_type} Strike {pos.strike}</td>
-                                              <td className={`p-2.5 font-extrabold ${pos.action === "BUY" ? "text-emerald-500" : "text-rose-500"}`}>{pos.action}</td>
-                                              <td className="p-2.5 font-mono">{pos.quantity}</td>
-                                              <td className="p-2.5">{currencySymbol}{pos.entry_price.toFixed(2)}</td>
-                                              <td className="p-2.5">{currencySymbol}{livePrice.toFixed(2)}</td>
-                                              <td className={`p-2.5 font-black font-mono ${pnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-                                                {pnl >= 0 ? "+" : ""}{currencySymbol}{Math.round(pnl).toLocaleString("en-IN")}
-                                              </td>
-                                              <td className="p-2.5">
-                                                <button 
-                                                  onClick={() => closePaperFoPosition(pos.id)}
-                                                  className="bg-rose-650 hover:bg-rose-500 text-white font-extrabold px-2 py-1 rounded cursor-pointer transition-all"
-                                                >
-                                                  Square Off
-                                                </button>
-                                              </td>
-                                            </tr>
-                                          );
-                                        })
-                                      )}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -3771,7 +3630,7 @@ export default function Dashboard() {
                   {/* Efficient Frontier scatter plot (Fixed Recharts Console Warning) */}
                   <div className={`p-5 rounded-2xl border flex flex-col ${themeClasses.card}`}>
                     <h4 className="font-bold text-slate-900 dark:text-white text-sm pb-2 border-b border-slate-200 dark:border-slate-800">Efficient Frontier Curve</h4>
-                    <div className="w-full mt-4">
+                    <div className="w-full h-[240px] min-h-[240px] mt-4">
                       {isMounted && (
                         <ResponsiveContainer width="100%" height={240} minWidth={0}>
                           <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
@@ -3999,7 +3858,7 @@ export default function Dashboard() {
                         {/* Compound Growth Area Chart */}
                         <div className={`p-5 rounded-2xl border ${themeClasses.card}`}>
                           <h4 className="font-bold text-slate-900 dark:text-white text-xs mb-3">SIP Wealth Roadmap Accumulation</h4>
-                          <div className="h-[220px] w-full">
+                          <div className="h-[260px] w-full">
                             {isMounted && (
                               <ResponsiveContainer width="100%" height={260} minWidth={0}>
                                 <AreaChart data={sipEnhancedResults.schedule} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
@@ -4409,7 +4268,7 @@ export default function Dashboard() {
                               <ResponsiveContainer width="100%" height={240} minWidth={0}>
                                 <LineChart data={mfData.chart_data} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                                   <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#E2E8F0" : "#1E293B"} />
-                                  <XAxis dataKey="Date" stroke="#64748B" fontSize={8} />
+                                  <XAxis dataKey="Date" stroke="#64748B" fontSize={8} tickFormatter={cleanChartDateFormatter} />
                                   <YAxis unit="%" stroke="#64748B" fontSize={8} tickFormatter={(v) => typeof v === 'number' ? `${v.toFixed(2)}%` : v} />
                                   <Tooltip formatter={(v: any) => [typeof v === 'number' ? `${v.toFixed(2)}%` : v]} contentStyle={{ backgroundColor: theme === "light" ? "#FFF" : "#0E1322", border: "1px solid rgba(148, 163, 184, 0.15)", borderRadius: "10px", fontSize: "10px" }} />
                                   <Legend wrapperStyle={{ fontSize: 9 }} />
@@ -4577,7 +4436,7 @@ export default function Dashboard() {
                         <ResponsiveContainer width="100%" height={280} minWidth={0}>
                           <LineChart data={backtestResults.equity_curve}>
                             <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#F1F5F9" : "#1E293B/50"} />
-                            <XAxis dataKey="Date" tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} />
+                            <XAxis dataKey="Date" tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} tickFormatter={cleanChartDateFormatter} />
                             <YAxis tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} domain={['auto', 'auto']} />
                             <Tooltip 
                               contentStyle={{ 
@@ -4784,12 +4643,21 @@ export default function Dashboard() {
                       <span>Refresh Prices</span>
                     </button>
                     <button
-                      onClick={resetPaperTrading}
+                      onClick={() => setShowResetConfirm(true)}
                       className="flex-1 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 text-xs font-bold rounded-xl flex items-center justify-center space-x-2 transition-all cursor-pointer"
                     >
                       <RotateCcw className="h-4 w-4" />
                       <span>Reset Account</span>
                     </button>
+                    {showResetConfirm && (
+                      <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-xs">
+                        <p className="font-semibold text-rose-700 dark:text-rose-300 mb-2">Reset all paper trading data? This cannot be undone.</p>
+                        <div className="flex gap-2">
+                          <button onClick={resetPaperTrading} className="flex-1 bg-rose-500 hover:bg-rose-600 text-white font-bold py-1.5 rounded-lg transition-colors cursor-pointer">Yes, Reset</button>
+                          <button onClick={() => setShowResetConfirm(false)} className="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold py-1.5 rounded-lg transition-colors cursor-pointer">Cancel</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -5004,6 +4872,582 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ==================== TAB 7: DERIVATIVES (F&O) WORKSTATION ==================== */}
+        {activeTab === "derivatives" && (
+          <div className="flex flex-col space-y-6 animate-fade-in">
+            {/* F&O Sub-tabs Header */}
+            <div className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${themeClasses.card}`}>
+              <div className="flex items-center space-x-3">
+                <div className="bg-indigo-500/10 p-2.5 rounded-xl border border-indigo-500/25">
+                  <TrendingUp className="h-5 w-5 text-indigo-500" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>F&O Derivatives Workstation</span>
+                    <span className="text-[9px] bg-indigo-500/15 text-indigo-500 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Options Trader Web</span>
+                  </h3>
+                  <p className="text-3xs text-slate-400">Manage Option Chains, Payoff Simulators, Option Greeks, and Active Simulator Positions for {selectedTicker}</p>
+                </div>
+              </div>
+
+              {/* Workstation Sub-tabs */}
+              <div className="flex space-x-1 p-1 bg-slate-100 dark:bg-[#0E1322] border border-slate-200 dark:border-slate-800/80 rounded-xl overflow-x-auto scrollbar-none flex-nowrap w-full md:w-auto">
+                {[
+                  { id: "Chain", label: "Option Chain" },
+                  { id: "Simulator", label: "Payoff Simulator" },
+                  { id: "Analysis", label: "ML Option Analytics" },
+                  { id: "Positions", label: "Active Positions" }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setFoTab(tab.id as any)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      foTab === tab.id
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
+                        : theme === "light" 
+                          ? "text-slate-650 hover:text-slate-900 hover:bg-slate-200/50" 
+                          : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sub-tab 1: Option Chain */}
+            {foTab === "Chain" && (
+              <div className={`p-6 rounded-2xl border flex flex-col space-y-4 ${themeClasses.card}`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center space-x-3">
+                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Expiration Date:</label>
+                    <select
+                      value={selectedFoExpiry}
+                      onChange={(e) => {
+                        setSelectedFoExpiry(e.target.value);
+                        fetchFoOptionChain(selectedTicker, e.target.value);
+                      }}
+                      className={`border rounded-xl px-3 py-1.5 text-xs font-semibold ${themeClasses.input}`}
+                    >
+                      {foExpirations.map(exp => (
+                        <option key={exp} value={exp}>{exp}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {foOptionChain && (
+                    <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                      Spot Price: <span className="numeric-monospace font-black text-slate-900 dark:text-white">{currencySymbol}{foOptionChain.spotPrice?.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {foLoading ? (
+                  <div className="flex justify-center py-20">
+                    <RefreshCw className="h-8 w-8 animate-spin text-indigo-500" />
+                  </div>
+                ) : foOptionChain ? (
+                  <div className="overflow-x-auto select-none">
+                    <table className="w-full text-[10px] text-center border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-bold uppercase">
+                          <th className="py-2.5 px-1 col-span-3 border-r border-slate-200 dark:border-slate-800" colSpan={4}>CALL OPTIONS</th>
+                          <th className="py-2.5 px-1 border-r border-slate-200 dark:border-slate-800" colSpan={1}>STRIKE</th>
+                          <th className="py-2.5 px-1" colSpan={4}>PUT OPTIONS</th>
+                        </tr>
+                        <tr className="bg-slate-55 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 text-slate-450 text-3xs font-extrabold uppercase">
+                          <th className="py-2 px-1">IV</th>
+                          <th className="py-2 px-1">Delta</th>
+                          <th className="py-2 px-1">Price</th>
+                          <th className="py-2 px-1 border-r border-slate-200 dark:border-slate-800">Action</th>
+                          <th className="py-2 px-2 border-r border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white bg-indigo-500/5">STRIKE</th>
+                          <th className="py-2 px-1 border-r border-slate-250 dark:border-slate-800">Action</th>
+                          <th className="py-2 px-1">Price</th>
+                          <th className="py-2 px-1">Delta</th>
+                          <th className="py-2 px-1">IV</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {foOptionChain.calls.map((call: any, idx: number) => {
+                          const strike = call.strike;
+                          const put = foOptionChain.puts.find((p: any) => p.strike === strike) || { lastPrice: 0.0, impliedVolatility: 0.0, delta: 0.0 };
+                          const isATM = Math.abs(strike - foOptionChain.spotPrice) < (foOptionChain.spotPrice * 0.015);
+                          
+                          return (
+                            <tr 
+                              key={strike} 
+                              className={`border-b border-slate-100 dark:border-slate-900/60 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/15 ${
+                                isATM ? "bg-indigo-500/5 dark:bg-indigo-500/5 font-semibold" : ""
+                              }`}
+                            >
+                              {/* CALL INFO */}
+                              <td className="py-2.5 px-1 font-mono text-slate-400">{(call.impliedVolatility * 100).toFixed(1)}%</td>
+                              <td className={`py-2.5 px-1 font-mono ${call.delta >= 0.5 ? "text-emerald-500" : "text-slate-500"}`}>{call.delta?.toFixed(2)}</td>
+                              <td className="py-2.5 px-1 font-mono font-bold">{currencySymbol}{call.lastPrice?.toFixed(2)}</td>
+                              <td className="py-2.5 px-1 border-r border-slate-200 dark:border-slate-800">
+                                <div className="flex justify-center space-x-1">
+                                  <button 
+                                    onClick={() => executePaperFoTrade("CALL", "BUY", strike, call.lastPrice)}
+                                    className="bg-emerald-500 hover:bg-emerald-655 text-white px-2 py-0.5 rounded text-[8px] font-black cursor-pointer uppercase transition-colors"
+                                  >
+                                    Buy
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      const existing = foLegs.find(l => l.strike === strike && l.option_type === "CALL");
+                                      if (!existing) {
+                                        setFoLegs([...foLegs, { option_type: "CALL", action: "BUY", strike: strike, premium: call.lastPrice, quantity: 1 }]);
+                                        showToast("Call leg added to Payoff Simulator", "success");
+                                      }
+                                    }}
+                                    className="bg-slate-100 dark:bg-slate-800 hover:bg-indigo-655 hover:text-white border border-slate-250 dark:border-slate-700 px-1 py-0.5 rounded text-[8px] font-black cursor-pointer transition-all"
+                                    title="Add to Payoff Simulator"
+                                  >
+                                    +Sim
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* STRIKE PRICE */}
+                              <td className="py-2.5 px-2 font-mono font-black border-r border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white bg-slate-50/50 dark:bg-slate-900/30">
+                                {currencySymbol}{strike}
+                              </td>
+
+                              {/* PUT INFO */}
+                              <td className="py-2.5 px-1 border-r border-slate-200 dark:border-slate-800">
+                                <div className="flex justify-center space-x-1">
+                                  <button 
+                                    onClick={() => executePaperFoTrade("PUT", "BUY", strike, put.lastPrice)}
+                                    className="bg-rose-500 hover:bg-rose-655 text-white px-2 py-0.5 rounded text-[8px] font-black cursor-pointer uppercase transition-colors"
+                                  >
+                                    Buy
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      const existing = foLegs.find(l => l.strike === strike && l.option_type === "PUT");
+                                      if (!existing) {
+                                        setFoLegs([...foLegs, { option_type: "PUT", action: "BUY", strike: strike, premium: put.lastPrice, quantity: 1 }]);
+                                        showToast("Put leg added to Payoff Simulator", "success");
+                                      }
+                                    }}
+                                    className="bg-slate-100 dark:bg-slate-800 hover:bg-indigo-655 hover:text-white border border-slate-250 dark:border-slate-700 px-1 py-0.5 rounded text-[8px] font-black cursor-pointer transition-all"
+                                    title="Add to Payoff Simulator"
+                                  >
+                                    +Sim
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-1 font-mono font-bold">{currencySymbol}{put.lastPrice?.toFixed(2)}</td>
+                              <td className={`py-2.5 px-1 font-mono ${put.delta <= -0.5 ? "text-rose-500" : "text-slate-500"}`}>{put.delta?.toFixed(2)}</td>
+                              <td className="py-2.5 px-1 font-mono text-slate-400">{(put.impliedVolatility * 100).toFixed(1)}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-10 text-slate-500 text-xs">No option chain details available for {selectedTicker}.</div>
+                )}
+              </div>
+            )}
+
+            {/* Sub-tab 2: Payoff Simulator */}
+            {foTab === "Simulator" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Legs Configuration */}
+                <div className={`p-6 rounded-2xl border flex flex-col space-y-5 ${themeClasses.card}`}>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Option Legs Configuration</h4>
+                    <p className="text-3xs text-slate-400 mt-0.5">Build option spreads or select a predefined trading model.</p>
+                  </div>
+
+                  {/* Predefined Strategy Select */}
+                  <div className="flex flex-col space-y-1 text-xs">
+                    <label className="text-3xs text-slate-400 font-bold uppercase">Predefined Strategy</label>
+                    <select
+                      value={foStrategy}
+                      onChange={(e) => applyPredefinedStrategy(e.target.value)}
+                      className={`border rounded-xl px-3 py-2 text-xs font-semibold ${themeClasses.input}`}
+                    >
+                      <option value="None">Custom Strategy</option>
+                      <option value="LongCall">Long Call (Bullish)</option>
+                      <option value="LongPut">Long Put (Bearish)</option>
+                      <option value="BullCallSpread">Bull Call Spread (Moderate Bullish)</option>
+                      <option value="BearPutSpread">Bear Put Spread (Moderate Bearish)</option>
+                      <option value="Straddle">Long Straddle (High Volatility)</option>
+                      <option value="Strangle">Long Strangle (OOTM Volatility)</option>
+                      <option value="IronCondor">Iron Condor (Sideways / Neutral)</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between border-b pb-2 border-slate-200 dark:border-slate-800">
+                    <span className="text-xs font-bold text-slate-650 dark:text-slate-200">Simulation Legs</span>
+                    <button 
+                      onClick={() => {
+                        const spot = foOptionChain?.spotPrice || 100;
+                        setFoLegs([...foLegs, { option_type: "CALL", action: "BUY", strike: spot, premium: spot * 0.03, quantity: 1 }]);
+                      }}
+                      className="bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-600 dark:text-indigo-400 text-3xs font-extrabold px-2 py-1 rounded border border-indigo-500/20 flex items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <Plus className="h-3 w-3" /> Add Leg
+                    </button>
+                  </div>
+
+                  {foLegs.length > 0 ? (
+                    <div className="flex flex-col space-y-3 max-h-[280px] overflow-y-auto pr-1">
+                      {foLegs.map((leg, idx) => (
+                        <div key={idx} className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col space-y-2">
+                          <div className="flex justify-between items-center text-3xs font-bold uppercase tracking-wider text-slate-405">
+                            <span>Leg #{idx + 1}</span>
+                            <button 
+                              onClick={() => setFoLegs(foLegs.filter((_, lIdx) => lIdx !== idx))}
+                              className="text-slate-450 hover:text-rose-500 font-extrabold text-sm focus:outline-none cursor-pointer"
+                              title="Delete Leg"
+                            >
+                              &times;
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <label className="text-4xs text-slate-450 font-bold uppercase">Type</label>
+                              <select
+                                value={leg.option_type}
+                                onChange={(e) => {
+                                  const updated = [...foLegs];
+                                  updated[idx].option_type = e.target.value;
+                                  setFoLegs(updated);
+                                }}
+                                className={`w-full border rounded-lg px-2 py-1 mt-0.5 ${themeClasses.input}`}
+                              >
+                                <option value="CALL">CALL</option>
+                                <option value="PUT">PUT</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-4xs text-slate-450 font-bold uppercase">Action</label>
+                              <select
+                                value={leg.action}
+                                onChange={(e) => {
+                                  const updated = [...foLegs];
+                                  updated[idx].action = e.target.value;
+                                  setFoLegs(updated);
+                                }}
+                                className={`w-full border rounded-lg px-2 py-1 mt-0.5 ${themeClasses.input}`}
+                              >
+                                <option value="BUY">BUY (Long)</option>
+                                <option value="SELL">SELL (Short)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div>
+                              <label className="text-4xs text-slate-450 font-bold uppercase">Strike ({currencySymbol})</label>
+                              <input 
+                                type="number" 
+                                value={leg.strike}
+                                onChange={(e) => {
+                                  const updated = [...foLegs];
+                                  updated[idx].strike = Number(e.target.value);
+                                  setFoLegs(updated);
+                                }}
+                                className={`w-full border rounded-lg px-2 py-1 mt-0.5 ${themeClasses.input}`}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-4xs text-slate-450 font-bold uppercase">Premium ({currencySymbol})</label>
+                              <input 
+                                type="number" 
+                                step="0.1"
+                                value={leg.premium}
+                                onChange={(e) => {
+                                  const updated = [...foLegs];
+                                  updated[idx].premium = Number(e.target.value);
+                                  setFoLegs(updated);
+                                }}
+                                className={`w-full border rounded-lg px-2 py-1 mt-0.5 ${themeClasses.input}`}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-4xs text-slate-450 font-bold uppercase">Lots</label>
+                              <input 
+                                type="number" 
+                                min="1"
+                                value={leg.quantity}
+                                onChange={(e) => {
+                                  const updated = [...foLegs];
+                                  updated[idx].quantity = Math.max(1, Number(e.target.value));
+                                  setFoLegs(updated);
+                                }}
+                                className={`w-full border rounded-lg px-2 py-1 mt-0.5 ${themeClasses.input}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10 border border-dashed rounded-xl text-slate-500 text-2xs">
+                      No legs in Payoff simulation. Click "+Sim" in the Option Chain or click "+ Add Leg" above.
+                    </div>
+                  )}
+                </div>
+
+                {/* Payoff Chart Display */}
+                <div className={`lg:col-span-2 p-5 rounded-2xl border flex flex-col space-y-4 ${themeClasses.card}`}>
+                  <div className="flex justify-between items-center border-b pb-2 border-slate-200 dark:border-slate-800">
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Options Payoff Curve at Expiry</h4>
+                    <span className="text-4xs text-indigo-500 font-extrabold uppercase bg-indigo-500/5 px-2 py-0.5 rounded">Lot Size: {selectedTicker.endsWith(".NS") ? 50 : 100} shares</span>
+                  </div>
+
+                  {foPayoffData.length > 0 ? (
+                    <div className="h-[280px] w-full mt-4">
+                      {isMounted && (
+                        <ResponsiveContainer width="100%" height={280} minWidth={0}>
+                          <ComposedChart data={foPayoffData} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#F1F5F9" : "#1E293B/50"} />
+                            <XAxis dataKey="UnderlyingPrice" tick={{ fontSize: 8 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} label={{ value: `Stock Spot Price (${currencySymbol})`, position: "insideBottomRight", offset: -5, fontSize: 8, fill: "#64748B" }} />
+                            <YAxis tick={{ fontSize: 8 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} label={{ value: `Net PnL (${currencySymbol})`, angle: -90, position: "insideLeft", offset: 10, fontSize: 8, fill: "#64748B" }} />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: theme === "light" ? "#ffffff" : "#0E1322",
+                                borderColor: theme === "light" ? "#E2E8F0" : "#1E293B",
+                                fontSize: "10px",
+                                borderRadius: "10px",
+                                color: theme === "light" ? "#000000" : "#ffffff"
+                              }} 
+                              formatter={(value: any) => [`${currencySymbol}${value.toLocaleString("en-IN")}`, "Expected Profit/Loss"]}
+                            />
+                            <ReferenceLine y={0} stroke="#EF4444" strokeWidth={1} strokeDasharray="3 3" />
+                            <Area type="monotone" dataKey="PnL" name="Expiry Profit / Loss" stroke="#4F46E5" strokeWidth={2.5} fillOpacity={0.15} fill="#4F46E5" />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="h-[280px] flex items-center justify-center border border-dashed rounded-xl text-slate-500 text-xs">
+                      Simulate a strategy to render PnL curve chart.
+                    </div>
+                  )}
+
+                  <div className="p-3 bg-indigo-500/5 rounded-xl border border-indigo-500/10 text-[10px] leading-relaxed text-indigo-700 dark:text-indigo-400">
+                    💡 <b>Payoff Tip:</b> Breakeven strikes occur where the profit/loss curve crosses the red dotted axis. Net credit strategies benefit from market sideways range decay, while debit spreads require momentum direction breakouts.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Sub-tab 3: Option Analytics */}
+            {foTab === "Analysis" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Volatility Smile Analysis */}
+                <div className={`lg:col-span-2 p-6 rounded-2xl border flex flex-col space-y-4 ${themeClasses.card}`}>
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider border-b pb-2 border-slate-200 dark:border-slate-800">Implied Volatility Smile Curve</h4>
+                  
+                  {foOptionChain && foOptionChain.calls ? (
+                    <div className="h-[250px] w-full mt-2">
+                      {isMounted && (
+                        <ResponsiveContainer width="100%" height={250} minWidth={0}>
+                          <LineChart data={foOptionChain.calls}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={theme === "light" ? "#F1F5F9" : "#1E293B/50"} />
+                            <XAxis dataKey="strike" tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} label={{ value: `Option Strikes (${currencySymbol})`, position: "insideBottomRight", offset: -5, fontSize: 8, fill: "#64748B" }} />
+                            <YAxis tick={{ fontSize: 9 }} stroke={theme === "light" ? "#64748B" : "#94A3B8"} label={{ value: "IV (%)", angle: -90, position: "insideLeft", offset: 10, fontSize: 8, fill: "#64748B" }} tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: theme === "light" ? "#ffffff" : "#0E1322",
+                                borderColor: theme === "light" ? "#E2E8F0" : "#1E293B",
+                                fontSize: "10px",
+                                borderRadius: "10px",
+                              }} 
+                              formatter={(value: any) => [`${(value * 100).toFixed(2)}%`, "Implied Volatility"]}
+                            />
+                            <Line type="monotone" dataKey="impliedVolatility" stroke="#8B5CF6" strokeWidth={2.5} dot={{ r: 3 }} name="IV Smile Curve" />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="h-[250px] flex items-center justify-center border border-dashed rounded-xl text-slate-500 text-xs">
+                      No option chain details available.
+                    </div>
+                  )}
+                  
+                  <p className="text-[10px] text-slate-400 leading-relaxed pt-2">
+                    📈 The <b>Volatility Smile</b> represents the shape formed by plotting strikes against their implied volatility. In equity markets, out-of-the-money puts generally command a volatility premium (skew) as market participants pay up for downside portfolio hedging.
+                  </p>
+                </div>
+
+                {/* ML Forecasts */}
+                <div className="flex flex-col space-y-6">
+                  {/* ML Forecasted IV Trend */}
+                  <div className={`p-6 rounded-2xl border flex flex-col space-y-3 ${themeClasses.card}`}>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider border-b pb-2 border-slate-200 dark:border-slate-800">5-Day Volatility Forecast</h4>
+                    
+                    {foMlForecast ? (
+                      <div className="flex flex-col space-y-3">
+                        <div className="flex items-center justify-between text-2xs font-semibold text-slate-400">
+                          <span>Forecast Period</span>
+                          <span>Predicted IV</span>
+                        </div>
+                        
+                        <div className="divide-y divide-slate-100 dark:divide-slate-800/40">
+                          {foMlForecast.forecast_5d?.map((day: any) => (
+                            <div key={day.Day} className="flex justify-between py-2 text-2xs">
+                              <span className="font-semibold text-slate-655 dark:text-slate-300">{day.Day} Forecast</span>
+                              <span className="font-mono font-bold text-slate-900 dark:text-white">{Number(day.IV).toFixed(2)}%</span>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <div className={`p-2.5 rounded-lg border text-[9px] font-semibold flex items-center space-x-2 ${
+                          foMlForecast.regime === "Expanding" 
+                            ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400" 
+                            : "bg-rose-500/10 border-rose-500/25 text-rose-600 dark:text-rose-455"
+                        }`}>
+                          <span className="h-2 w-2 rounded-full bg-current"></span>
+                          <span>Vol Trend estimate: <b>{foMlForecast.regime}</b></span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-slate-500 text-2xs">No ML volatility forecast data.</div>
+                    )}
+                  </div>
+
+                  {/* Options recommendations */}
+                  <div className={`p-6 rounded-2xl border flex flex-col space-y-3 ${themeClasses.card}`}>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider border-b pb-2 border-slate-200 dark:border-slate-800">Agent Contract Signals</h4>
+                    
+                    {foOptionChain && foOptionChain.calls && foOptionChain.calls.length > 0 ? (
+                      <div className="flex flex-col space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                        {foOptionChain.calls.slice(4, 9).map((call: any, idx: number) => (
+                          <div key={idx} className="p-2.5 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-lg flex justify-between items-center text-xs">
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-bold text-slate-850 dark:text-white text-[10px]">{currencySymbol}{call.strike} CALL Contract</span>
+                              <span className="text-[9px] text-slate-400">IV: {(call.impliedVolatility * 100).toFixed(1)}% | Delta: {call.delta?.toFixed(2)}</span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full font-bold text-[8px] uppercase tracking-wider shrink-0 ${
+                              call.recommendation?.action === "BUY"
+                                ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                                : call.recommendation?.action === "SELL"
+                                ? "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                                : "bg-slate-100 text-slate-400 border border-slate-250 dark:bg-slate-850"
+                            }`}>
+                              {call.recommendation?.action || "HOLD"} ({call.recommendation?.confidence || 50}%)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-slate-500 text-2xs">No active contract recommendations available.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {foTab === "Positions" && (
+              <div className="flex flex-col space-y-6 animate-fade-in">
+                
+                {/* F&O Balance and Position Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">F&O Simulator Capital</span>
+                    <span className="text-base font-black text-slate-900 dark:text-white pt-1 font-mono">
+                      {currencySymbol}{foCashBalance.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className={`p-4 rounded-xl border ${themeClasses.card} flex flex-col justify-between`}>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">Open Derivatives Positions</span>
+                    <span className="text-base font-black text-slate-900 dark:text-white pt-1 font-mono">
+                      {foPositionList.length} Active
+                    </span>
+                  </div>
+                  <div className="flex flex-col justify-center">
+                    <button
+                      onClick={() => {
+                        setFoPositionList([]);
+                        setFoCashBalance(1000000);
+                        showToast("F&O simulator account reset successfully.", "success");
+                      }}
+                      className="bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 text-xs font-bold py-3 rounded-xl flex items-center justify-center space-x-2 transition-all cursor-pointer w-full md:w-auto"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      <span>Reset Balances</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Active option positions card */}
+                <div className={`p-5 rounded-2xl border flex flex-col space-y-3 ${themeClasses.card}`}>
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider border-b pb-2 border-slate-200 dark:border-slate-800">Active Derivatives Positions</h4>
+                  {foPositionList.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-2xs text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase">
+                            <th className="py-2.5">Asset Contract</th>
+                            <th className="py-2.5">Lots / Qty</th>
+                            <th className="py-2.5">Entry Premium</th>
+                            <th className="py-2.5">Current Premium</th>
+                            <th className="py-2.5">Net PnL ({currencySymbol})</th>
+                            <th className="py-2.5 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {foPositionList.map((pos) => {
+                            let currentPrice = pos.entry_price;
+                            if (foOptionChain) {
+                              const list = pos.option_type === "CALL" ? foOptionChain.calls : foOptionChain.puts;
+                              const currentOpt = list.find((o: any) => o.strike === pos.strike);
+                              if (currentOpt) {
+                                currentPrice = currentOpt.lastPrice;
+                              }
+                            }
+                            
+                            const pnl = pos.action === "BUY"
+                              ? (currentPrice - pos.entry_price) * pos.quantity
+                              : (pos.entry_price - currentPrice) * pos.quantity;
+                              
+                            return (
+                              <tr key={pos.id} className="border-b border-slate-100 dark:border-slate-900/60 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-900/20">
+                                <td className="py-2.5 font-bold">
+                                  {pos.ticker.split(".")[0]} {pos.strike} {pos.option_type === "CALL" ? "CE" : "PE"} 
+                                  <span className={`ml-2 px-1.5 py-0.5 rounded font-bold text-[8px] ${
+                                    pos.action === "BUY" ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+                                  }`}>{pos.action}</span>
+                                </td>
+                                <td className="py-2.5 font-mono">{pos.quantity} shares ({pos.quantity / pos.lot_size} Lots)</td>
+                                <td className="py-2.5 font-mono text-slate-500">{currencySymbol}{pos.entry_price?.toFixed(2)}</td>
+                                <td className="py-2.5 font-mono text-slate-850 dark:text-slate-200">{currencySymbol}{currentPrice?.toFixed(2)}</td>
+                                <td className={`py-2.5 font-black font-mono ${pnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                                  {pnl >= 0 ? "+" : ""}{currencySymbol}{pnl.toFixed(2)} ({((pnl / (pos.entry_price * pos.quantity)) * 100).toFixed(2)}%)
+                                </td>
+                                <td className="py-2.5 text-right">
+                                  <button
+                                    onClick={() => closePaperFoPosition(pos.id)}
+                                    className="bg-rose-500/15 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/25 px-2.5 py-1 rounded text-3xs font-extrabold transition-all cursor-pointer"
+                                  >
+                                    Close Position
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-10 text-slate-500 text-xs">No active option positions held. Use the Option Chain grid to open a virtual trade.</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
       </main>
 
       <footer className={`border-t py-6 px-6 text-center text-3xs space-y-2 mt-auto ${
@@ -5025,6 +5469,7 @@ export default function Dashboard() {
       }`}>
         {[
           { id: "research", label: "Analyst", icon: Activity },
+          { id: "derivatives", label: "F&O", icon: TrendingUp },
           { id: "optimizer", label: "Optimizer", icon: PieIcon },
           { id: "finance", label: "Planner", icon: Landmark },
           { id: "backtesting", label: "Backtest", icon: History },

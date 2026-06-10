@@ -29,11 +29,14 @@ def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # 5. Relative Strength Index (RSI - 14 days)
     def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
         delta = series.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
         
-        # Avoid division by zero
-        rs = gain / np.where(loss == 0, 1e-9, loss)
+        # Use exponential moving average with alpha = 1/period (Wilder's smoothing)
+        avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
+        
+        rs = avg_gain / np.where(avg_loss == 0, 1e-9, avg_loss)
         rsi = 100 - (100 / (1 + rs))
         return rsi
 
