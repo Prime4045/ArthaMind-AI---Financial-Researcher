@@ -302,7 +302,6 @@ export default function Dashboard() {
   const [masterReport, setMasterReport] = useState("");
   const [pdfFilename, setPdfFilename] = useState("");
   const [pdfCompiling, setPdfCompiling] = useState(false);
-  const consoleEndRef = useRef<HTMLDivElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // Portfolio Optimization State
@@ -552,12 +551,7 @@ export default function Dashboard() {
     return () => clearTimeout(delay);
   }, [compareSearchB]);
 
-  // Auto scroll agent console logs
-  useEffect(() => {
-    if (consoleEndRef.current) {
-      consoleEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [agentLogs]);
+
 
   // Close suggestions dropdown when clicking outside of the search container
   useEffect(() => {
@@ -630,51 +624,24 @@ export default function Dashboard() {
   }, [selectedTicker, timePeriod]);
 
   async function fetchDashboardData(ticker: string, period: string = "1Y") {
-    const periodMap: Record<string, string> = {
-      "1D": "1d",
-      "5D": "5d",
-      "1M": "1mo",
-      "6M": "6mo",
-      "YTD": "ytd",
-      "1Y": "1y",
-      "5Y": "5y",
-      "Max": "max"
-    };
-    const yfPeriod = periodMap[period] || "1y";
-    
+    // Clear old data so the loading checklist starts fresh
+    setCurrentStockInfo(null);
+    setStockHistory([]);
+    setAiRecommendation(null);
+
     setLoadingHistory(true);
     setLoadingInfo(true);
     setLoadingRecommendation(true);
     
     try {
-      const res = await fetch(`${BACKEND_URL}/api/stock/${ticker}/dashboard?period=${yfPeriod}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.tickers) {
-          setTickers(data.tickers);
-        }
-        setCurrentStockInfo(data.info || null);
-        setStockHistory(data.history || []);
-        setAiRecommendation(data.recommendation || null);
-      } else {
-        console.warn("Dashboard batch API failed, using fallback endpoints.");
-        await Promise.all([
-          fetchStockHistory(ticker, period),
-          fetchStockInfo(ticker),
-          fetchRecommendation(ticker)
-        ]);
-      }
-    } catch (err) {
-      console.error("Failed to fetch unified dashboard data:", err);
       await Promise.all([
-        fetchStockHistory(ticker, period),
+        fetchTickers(),
         fetchStockInfo(ticker),
+        fetchStockHistory(ticker, period),
         fetchRecommendation(ticker)
       ]);
-    } finally {
-      setLoadingHistory(false);
-      setLoadingInfo(false);
-      setLoadingRecommendation(false);
+    } catch (err) {
+      console.error("Failed to fetch dashboard data:", err);
     }
   }
 
@@ -1638,11 +1605,74 @@ export default function Dashboard() {
             )}
 
             <div className="relative flex flex-col space-y-6">
-              {loadingInfo && (
+              {(loadingInfo || loadingHistory || loadingRecommendation) && (
                 <div className="absolute inset-0 bg-slate-900/10 dark:bg-black/35 backdrop-blur-[2px] z-50 flex items-center justify-center rounded-2xl min-h-[450px]">
-                  <div className="bg-white/85 dark:bg-[#0F172A]/90 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col items-center space-y-4">
-                    <RefreshCw className="h-8 w-8 text-indigo-500 animate-spin" />
-                    <span className="text-xs font-bold text-slate-800 dark:text-white">Loading dynamic financial data...</span>
+                  <div className="bg-white/95 dark:bg-[#0F172A]/95 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col space-y-4 max-w-md w-full mx-4">
+                    <div className="flex items-center space-x-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+                      <div className="bg-indigo-500/10 p-2 rounded-xl">
+                        <Activity className="h-5 w-5 text-indigo-500 animate-pulse" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-800 dark:text-white">Financial Data Aggregation</h3>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Fetching and compiling market intelligence for {selectedTicker}...</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col space-y-2">
+                      {[
+                        { 
+                          id: "info", 
+                          label: "Company Profile & Core Metrics", 
+                          desc: "Retrieving corporate summary, PE multiples, EPS, and ROE metrics.",
+                          isLoading: loadingInfo,
+                          hasData: !!currentStockInfo 
+                        },
+                        { 
+                          id: "history", 
+                          label: "Historical Prices & Technicals", 
+                          desc: "Aggregating daily stock history and calculating RSI, SMA, and MACD indicators.",
+                          isLoading: loadingHistory,
+                          hasData: stockHistory && stockHistory.length > 0
+                        },
+                        { 
+                          id: "recommendation", 
+                          label: "AI Recommendation & ML Model", 
+                          desc: "Generating live ML predictive signals and action recommendations.",
+                          isLoading: loadingRecommendation,
+                          hasData: !!aiRecommendation
+                        }
+                      ].map((step) => {
+                        let stepState: "completed" | "active" | "pending" = "pending";
+                        if (step.isLoading) {
+                          stepState = "active";
+                        } else if (step.hasData) {
+                          stepState = "completed";
+                        }
+                        
+                        return (
+                          <div 
+                            key={step.id} 
+                            className={`p-3 rounded-xl border flex items-start space-x-3 transition-all duration-300 ${
+                              stepState === "completed" 
+                                ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400" 
+                                : stepState === "active"
+                                ? "bg-indigo-500/5 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 active-pulse"
+                                : "bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-slate-900 text-slate-400 dark:text-slate-500"
+                            }`}
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {stepState === "completed" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                              {stepState === "active" && <RefreshCw className="h-4 w-4 text-indigo-500 animate-spin" />}
+                              {stepState === "pending" && <HelpCircle className="h-4 w-4 opacity-40 text-slate-400" />}
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className={`text-[11px] font-extrabold tracking-tight ${stepState === "pending" ? "text-slate-400 dark:text-slate-600" : "text-slate-700 dark:text-slate-200"}`}>{step.label}</h4>
+                              <p className="text-[10px] leading-relaxed opacity-75 mt-0.5">{step.desc}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
@@ -2132,22 +2162,7 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Terminal Monospaced Console Log */}
-                        <div className="bg-slate-950 text-[#00FF66] border border-slate-900 rounded-xl p-4 h-[180px] overflow-y-auto font-mono text-2xs space-y-1 relative shadow-inner">
-                          <div className="absolute top-2 right-4 text-3xs font-extrabold text-slate-500 uppercase tracking-widest select-none">Live Console Log</div>
-                          {agentLogs.length === 0 ? (
-                            <div className="text-slate-500 text-center py-14 font-sans text-xs">
-                              Console idle. Awaiting agent execution triggers...
-                            </div>
-                          ) : (
-                            agentLogs.map((log, idx) => (
-                              <div key={idx} className="leading-relaxed">
-                                <span className="text-slate-600">[{idx+1}]</span> {log}
-                              </div>
-                            ))
-                          )}
-                          <div ref={consoleEndRef} />
-                        </div>
+
 
                       </div>
                     )}
