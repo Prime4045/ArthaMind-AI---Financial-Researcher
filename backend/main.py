@@ -75,16 +75,28 @@ logger = logging.getLogger(__name__)
 
 # Load ML model
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_PATH = os.path.join(BASE_DIR, "stock_prediction_model.pkl")
+paths_to_try = [
+    os.path.join(BASE_DIR, "stock_prediction_model.pkl"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "stock_prediction_model.pkl"),
+    os.path.join(os.getcwd(), "stock_prediction_model.pkl"),
+    os.path.abspath("stock_prediction_model.pkl"),
+    "/tmp/stock_prediction_model.pkl"
+]
+
 ml_model = None
-if os.path.exists(MODEL_PATH):
-    try:
-        ml_model = joblib.load(MODEL_PATH)
-        logger.info("Successfully loaded ML prediction model using joblib.")
-    except Exception as e:
-        logger.error(f"Failed to load ML prediction model: {str(e)}")
-else:
-    logger.warning(f"ML prediction model not found at {MODEL_PATH}")
+model_loaded_path = None
+for path in paths_to_try:
+    if os.path.exists(path):
+        try:
+            ml_model = joblib.load(path)
+            model_loaded_path = path
+            logger.info(f"Successfully loaded ML prediction model using joblib from: {path}")
+            break
+        except Exception as e:
+            logger.error(f"Failed to load ML prediction model at {path}: {str(e)}")
+
+if ml_model is None:
+    logger.warning(f"ML prediction model not found in any of the tried paths: {paths_to_try}")
 
 class ReportGenerateRequest(BaseModel):
     ticker: str
@@ -350,8 +362,8 @@ def get_stock_history(ticker: str, period: str = "1y", db: Session = Depends(get
         try:
             last_updated_dt = datetime.strptime(cache_record.last_updated, "%Y-%m-%d %H:%M:%S")
             age_seconds = (datetime.now() - last_updated_dt).total_seconds()
-            # Cache threshold: 5 mins (300s) for 1d, 15 mins (900s) for 5d, 12 hours (43200s) for others
-            cache_expiry = 300 if period == "1d" else (900 if period == "5d" else 43200)
+            # Cache threshold: 120 seconds (2 mins) for 1d, 30 minutes (1800s) for others
+            cache_expiry = 120 if period == "1d" else 1800
             if age_seconds < cache_expiry:
                 is_stale = False
         except Exception as e:
@@ -622,8 +634,8 @@ def get_cached_stock_info(ticker: str, db: Session) -> Dict[str, Any]:
         try:
             last_updated_dt = datetime.strptime(cache_record.last_updated, "%Y-%m-%d %H:%M:%S")
             age_seconds = (datetime.now() - last_updated_dt).total_seconds()
-            # 12 hours = 43200 seconds
-            if age_seconds < 43200:
+            # Cache threshold: 120 seconds (2 mins) to keep prices fresh
+            if age_seconds < 120:
                 is_stale = False
         except Exception as e:
             logger.warning(f"Error parsing cache timestamp for {ticker}: {str(e)}")
@@ -880,7 +892,8 @@ def get_stock_recommendation(ticker: str, db: Session = Depends(get_db)):
             try:
                 last_updated_dt = datetime.strptime(history_record.last_updated, "%Y-%m-%d %H:%M:%S")
                 age_seconds = (datetime.now() - last_updated_dt).total_seconds()
-                if age_seconds < 43200: # 12 hours
+                # Use a shorter 30-minute cache age threshold for technical indicators
+                if age_seconds < 1800:
                     history_list = json.loads(history_record.history_json)
                     indicators_df = pd.DataFrame(history_list)
                     logger.info(f"Loaded stock indicators from database cache for {ticker} recommendation.")
@@ -900,9 +913,10 @@ def get_stock_recommendation(ticker: str, db: Session = Depends(get_db)):
                 raise HTTPException(status_code=404, detail=f"No price history found for {ticker} to calculate signals.")
                 
         latest_row = indicators_df.iloc[-1]
-        current_price = safe_float(latest_row.get("Close"), 0.0)
+        # Prioritize the live real-time price from yfinance info cache
+        current_price = safe_float(cached_info.get("currentPrice"), 0.0)
         if current_price <= 0.0:
-            current_price = safe_float(cached_info.get("currentPrice"), 1500.0)
+            current_price = safe_float(latest_row.get("Close"), 1500.0)
             
         # 1. Machine Learning Next-Day Forecast (Random Forest Regressor)
         predicted_close = current_price
@@ -2248,8 +2262,21 @@ def retrain_ml_model(db: Session = Depends(get_db)):
         rf.fit(X, y)
         
         MODEL_PATH = os.path.join(BASE_DIR, "stock_prediction_model.pkl")
-        joblib.dump(rf, MODEL_PATH)
         
+        # Write to temporary file in the same directory, then rename atomically to prevent uvicorn partial read during reload
+        import tempfile
+        tmp_dir = os.path.dirname(MODEL_PATH)
+        with tempfile.NamedTemporaryFile(dir=tmp_dir, suffix=".tmp", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+        
+        try:
+            joblib.dump(rf, tmp_path)
+            os.replace(tmp_path, MODEL_PATH)
+        except Exception as dump_err:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise dump_err
+            
         globals()["ml_model"] = rf
         logger.info("Successfully retrained and reloaded ML prediction model.")
         
