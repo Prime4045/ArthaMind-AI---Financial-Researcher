@@ -393,6 +393,229 @@ export default function Dashboard() {
   const [mfData, setMfData] = useState<any>(null);
   const [mfLoading, setMfLoading] = useState(false);
 
+  // F&O Derivatives State
+  const [foExpirations, setFoExpirations] = useState<string[]>([]);
+  const [selectedFoExpiry, setSelectedFoExpiry] = useState<string>("");
+  const [foOptionChain, setFoOptionChain] = useState<any>(null);
+  const [foLoading, setFoLoading] = useState(false);
+  const [foStrategy, setFoStrategy] = useState<string>("None");
+  const [foLegs, setFoLegs] = useState<any[]>([]);
+  const [foPayoffData, setFoPayoffData] = useState<any[]>([]);
+  const [foMlForecast, setFoMlForecast] = useState<any>(null);
+  const [foTab, setFoTab] = useState<"Chain" | "Analysis" | "Simulator" | "Broker">("Chain");
+  const [brokerConfig, setBrokerConfig] = useState<any>({ api_key: "", access_token: "", client_id: "" });
+  const [brokerConnected, setBrokerConnected] = useState(false);
+  const [activeBroker, setActiveBroker] = useState<string>("None");
+  const [foPositionList, setFoPositionList] = useState<any[]>([]);
+  const [foCashBalance, setFoCashBalance] = useState<number>(1000000); // 10 Lakh INR Starting Capital
+
+  const fetchFoExpirations = async (ticker: string) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/fo/expirations?ticker=${ticker}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.expiries && data.expiries.length > 0) {
+          setFoExpirations(data.expiries);
+          setSelectedFoExpiry(data.expiries[0]);
+          fetchFoOptionChain(ticker, data.expiries[0]);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch F&O expirations:", err);
+    }
+  };
+
+  const fetchFoOptionChain = async (ticker: string, expiry: string) => {
+    setFoLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/fo/option-chain?ticker=${ticker}&expiration=${expiry}`);
+      if (res.ok) {
+        const data = await res.json();
+        setFoOptionChain(data);
+        setFoLegs([]);
+        setFoStrategy("None");
+        setFoPayoffData([]);
+      }
+      
+      const mlRes = await fetch(`${BACKEND_URL}/api/fo/ml-forecast?ticker=${ticker}`);
+      if (mlRes.ok) {
+        const mlData = await mlRes.json();
+        setFoMlForecast(mlData);
+      }
+    } catch (err) {
+      console.error("Failed to fetch Option Chain:", err);
+    } finally {
+      setFoLoading(false);
+    }
+  };
+
+  const recalculatePayoff = (legs: any[], spot: number) => {
+    if (legs.length === 0) {
+      setFoPayoffData([]);
+      return;
+    }
+    
+    const dataPoints = [];
+    const minPrice = spot * 0.8;
+    const maxPrice = spot * 1.2;
+    const step = (maxPrice - minPrice) / 40;
+    
+    for (let i = 0; i <= 40; i++) {
+      const currentPrice = minPrice + i * step;
+      let totalPnl = 0;
+      
+      legs.forEach((leg) => {
+        const mult = leg.action === "BUY" ? 1 : -1;
+        let pnl = 0;
+        
+        if (leg.option_type === "CALL") {
+          pnl = Math.max(0, currentPrice - leg.strike) - leg.premium;
+        } else if (leg.option_type === "PUT") {
+          pnl = Math.max(0, leg.strike - currentPrice) - leg.premium;
+        } else {
+          pnl = currentPrice - leg.strike;
+        }
+        
+        const lotSize = selectedTicker.endsWith(".NS") ? 50 : 100;
+        totalPnl += pnl * leg.quantity * mult * lotSize;
+      });
+      
+      dataPoints.push({
+        UnderlyingPrice: parseFloat(currentPrice.toFixed(2)),
+        PnL: Math.round(totalPnl)
+      });
+    }
+    setFoPayoffData(dataPoints);
+  };
+
+  useEffect(() => {
+    if (foOptionChain && foOptionChain.spotPrice) {
+      recalculatePayoff(foLegs, foOptionChain.spotPrice);
+    } else {
+      setFoPayoffData([]);
+    }
+  }, [foLegs, foOptionChain]);
+
+  const applyPredefinedStrategy = (strategyType: string) => {
+    if (!foOptionChain || !foOptionChain.calls || foOptionChain.calls.length === 0) return;
+    
+    const spot = foOptionChain.spotPrice;
+    const strikes = foOptionChain.calls.map((c: any) => c.strike);
+    const atmStrike = strikes.reduce((prev: number, curr: number) => {
+      return Math.abs(curr - spot) < Math.abs(prev - spot) ? curr : prev;
+    });
+    
+    const idx = strikes.indexOf(atmStrike);
+    const spacing = idx > 0 ? strikes[idx] - strikes[idx - 1] : strikes[1] - strikes[0];
+    
+    let legs: any[] = [];
+    const calls = foOptionChain.calls;
+    const puts = foOptionChain.puts;
+    
+    const findPremium = (strike: number, optType: "CALL" | "PUT") => {
+      const arr = optType === "CALL" ? calls : puts;
+      const opt = arr.find((o: any) => o.strike === strike);
+      return opt ? opt.lastPrice : 0.0;
+    };
+    
+    if (strategyType === "LongCall") {
+      legs = [{ option_type: "CALL", action: "BUY", strike: atmStrike, premium: findPremium(atmStrike, "CALL"), quantity: 1 }];
+    } else if (strategyType === "LongPut") {
+      legs = [{ option_type: "PUT", action: "BUY", strike: atmStrike, premium: findPremium(atmStrike, "PUT"), quantity: 1 }];
+    } else if (strategyType === "BullCallSpread") {
+      const buyStrike = atmStrike;
+      const sellStrike = buyStrike + spacing;
+      legs = [
+        { option_type: "CALL", action: "BUY", strike: buyStrike, premium: findPremium(buyStrike, "CALL"), quantity: 1 },
+        { option_type: "CALL", action: "SELL", strike: sellStrike, premium: findPremium(sellStrike, "CALL"), quantity: 1 }
+      ];
+    } else if (strategyType === "BearPutSpread") {
+      const buyStrike = atmStrike;
+      const sellStrike = buyStrike - spacing;
+      legs = [
+        { option_type: "PUT", action: "BUY", strike: buyStrike, premium: findPremium(buyStrike, "PUT"), quantity: 1 },
+        { option_type: "PUT", action: "SELL", strike: sellStrike, premium: findPremium(sellStrike, "PUT"), quantity: 1 }
+      ];
+    } else if (strategyType === "Straddle") {
+      legs = [
+        { option_type: "CALL", action: "BUY", strike: atmStrike, premium: findPremium(atmStrike, "CALL"), quantity: 1 },
+        { option_type: "PUT", action: "BUY", strike: atmStrike, premium: findPremium(atmStrike, "PUT"), quantity: 1 }
+      ];
+    } else if (strategyType === "Strangle") {
+      const buyCallStrike = atmStrike + spacing;
+      const buyPutStrike = atmStrike - spacing;
+      legs = [
+        { option_type: "CALL", action: "BUY", strike: buyCallStrike, premium: findPremium(buyCallStrike, "CALL"), quantity: 1 },
+        { option_type: "PUT", action: "BUY", strike: buyPutStrike, premium: findPremium(buyPutStrike, "PUT"), quantity: 1 }
+      ];
+    } else if (strategyType === "IronCondor") {
+      const sellPutStrike = atmStrike - spacing;
+      const buyPutStrike = sellPutStrike - spacing;
+      const sellCallStrike = atmStrike + spacing;
+      const buyCallStrike = sellCallStrike + spacing;
+      legs = [
+        { option_type: "PUT", action: "BUY", strike: buyPutStrike, premium: findPremium(buyPutStrike, "PUT"), quantity: 1 },
+        { option_type: "PUT", action: "SELL", strike: sellPutStrike, premium: findPremium(sellPutStrike, "PUT"), quantity: 1 },
+        { option_type: "CALL", action: "SELL", strike: sellCallStrike, premium: findPremium(sellCallStrike, "CALL"), quantity: 1 },
+        { option_type: "CALL", action: "BUY", strike: buyCallStrike, premium: findPremium(buyCallStrike, "CALL"), quantity: 1 }
+      ];
+    }
+    
+    setFoLegs(legs);
+    setFoStrategy(strategyType);
+  };
+
+  const executePaperFoTrade = (optionType: string, action: string, strike: number, premium: number) => {
+    const lotSize = selectedTicker.endsWith(".NS") ? 50 : 100;
+    const size = 1; // 1 lot
+    const cost = premium * lotSize * size;
+    
+    if (action === "BUY" && foCashBalance < cost) {
+      alert("Insufficient cash balance to purchase this option contract.");
+      return;
+    }
+    
+    const newPos = {
+      id: Date.now(),
+      ticker: selectedTicker,
+      option_type: optionType,
+      action: action,
+      strike: strike,
+      entry_price: premium,
+      quantity: size * lotSize,
+      lot_size: lotSize
+    };
+    
+    setFoPositionList([newPos, ...foPositionList]);
+    if (action === "BUY") {
+      setFoCashBalance(prev => prev - cost);
+    }
+  };
+
+  const closePaperFoPosition = (id: number) => {
+    const pos = foPositionList.find(p => p.id === id);
+    if (!pos) return;
+    
+    let livePremium = pos.entry_price;
+    if (foOptionChain) {
+      const list = pos.option_type === "CALL" ? foOptionChain.calls : foOptionChain.puts;
+      const currentOpt = list.find((o: any) => o.strike === pos.strike);
+      if (currentOpt) {
+        livePremium = currentOpt.lastPrice;
+      }
+    }
+    
+    const finalValue = livePremium * pos.quantity;
+    
+    setFoPositionList(prev => prev.filter(p => p.id !== id));
+    if (pos.action === "BUY") {
+      setFoCashBalance(prev => prev + finalValue);
+    } else {
+      const pnl = (pos.entry_price - livePremium) * pos.quantity;
+      setFoCashBalance(prev => prev + pnl);
+    }
+  };
+
   // Stock Comparison Fetcher
   const fetchStockComparison = async (tickerA: string, tickerB: string) => {
     setCompareLoading(true);
@@ -628,6 +851,8 @@ export default function Dashboard() {
     setCurrentStockInfo(null);
     setStockHistory([]);
     setAiRecommendation(null);
+    setFoOptionChain(null);
+    setFoExpirations([]);
 
     setLoadingHistory(true);
     setLoadingInfo(true);
@@ -638,7 +863,8 @@ export default function Dashboard() {
         fetchTickers(),
         fetchStockInfo(ticker),
         fetchStockHistory(ticker, period),
-        fetchRecommendation(ticker)
+        fetchRecommendation(ticker),
+        fetchFoExpirations(ticker)
       ]);
     } catch (err) {
       console.error("Failed to fetch dashboard data:", err);
@@ -1766,6 +1992,7 @@ export default function Dashboard() {
                       {[
                         { id: "Overview", label: "Overview & Charts" },
                         { id: "Comparator", label: "Stock Comparator" },
+                        { id: "Derivatives", label: "Derivatives (F&O)" },
                         { id: "AI Research Hub", label: "AI Research Hub" },
                         { id: "Technical Indicators", label: "Technical Indicators" },
                         { id: "News Feed", label: "News Feed" }
@@ -2596,6 +2823,467 @@ export default function Dashboard() {
                           </div>
                         ) : (
                           <div className="text-center py-20 text-slate-500 text-xs">Enter symbols above and perform peer comparison analysis.</div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 6. DERIVATIVES (F&O) WORKSTATION TAB */}
+                    {activeWorkspaceTab === "Derivatives" && (
+                      <div className="space-y-6">
+                        {/* Expiry / Broker Connect Toolbar */}
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-900/30">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div>
+                              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Contract Expiration</label>
+                              <select 
+                                value={selectedFoExpiry}
+                                onChange={(e) => {
+                                  setSelectedFoExpiry(e.target.value);
+                                  fetchFoOptionChain(selectedTicker, e.target.value);
+                                }}
+                                className={`text-xs py-1.5 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
+                              >
+                                {foExpirations.map(date => (
+                                  <option key={date} value={date}>{date}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Strategy Templates</label>
+                              <select 
+                                value={foStrategy}
+                                onChange={(e) => applyPredefinedStrategy(e.target.value)}
+                                className={`text-xs py-1.5 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
+                              >
+                                <option value="None">Custom Strategy</option>
+                                <option value="LongCall">Long Call (Buy Call)</option>
+                                <option value="LongPut">Long Put (Buy Put)</option>
+                                <option value="BullCallSpread">Bull Call Spread</option>
+                                <option value="BearPutSpread">Bear Put Spread</option>
+                                <option value="Straddle">Long Straddle</option>
+                                <option value="Strangle">Long Strangle</option>
+                                <option value="IronCondor">Iron Condor</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Workstation Sub-Tabs */}
+                          <div className="flex border border-slate-200 dark:border-slate-800 rounded-lg p-1 bg-white dark:bg-slate-950 font-semibold text-3xs">
+                            {[
+                              { id: "Chain", label: "Option Chain" },
+                              { id: "Analysis", label: "ML Analytics & Greeks" },
+                              { id: "Simulator", label: "Payoff Simulator" },
+                              { id: "Broker", label: "Broker Gateway" }
+                            ].map(t => (
+                              <button
+                                key={t.id}
+                                onClick={() => setFoTab(t.id as any)}
+                                className={`px-3 py-1.5 rounded-md cursor-pointer transition-all ${
+                                  foTab === t.id 
+                                    ? "bg-indigo-600 text-white shadow-sm" 
+                                    : "text-slate-400 hover:text-slate-200"
+                                }`}
+                              >
+                                {t.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {foLoading ? (
+                          <div className="text-center py-24 text-slate-400 text-xs font-semibold">
+                            <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2.5 text-indigo-500" />
+                            Synchronizing live derivatives data...
+                          </div>
+                        ) : (
+                          <>
+                            {/* SUB TAB 1: OPTION CHAIN GRID */}
+                            {foTab === "Chain" && foOptionChain && (
+                              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-white dark:bg-[#0E1322]/20">
+                                <div className="card-header-gradient px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center text-3xs uppercase tracking-wider font-extrabold text-slate-400">
+                                  <span>CALL OPTIONS</span>
+                                  <span className="text-indigo-400 font-black">STRIKE PRICE</span>
+                                  <span>PUT OPTIONS</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-center text-3xs border-collapse">
+                                    <thead>
+                                      <tr className="border-b border-slate-200 dark:border-slate-850/60 bg-slate-50/50 dark:bg-slate-950/20 text-slate-450 uppercase font-extrabold">
+                                        <th className="p-2.5">Delta</th>
+                                        <th className="p-2.5">IV</th>
+                                        <th className="p-2.5">Bid</th>
+                                        <th className="p-2.5">Ask</th>
+                                        <th className="p-2.5 border-r border-slate-200 dark:border-slate-800">LTP</th>
+                                        <th className="p-2.5 font-bold text-slate-900 dark:text-white">Strike</th>
+                                        <th className="p-2.5 border-l border-slate-200 dark:border-slate-800">LTP</th>
+                                        <th className="p-2.5">Ask</th>
+                                        <th className="p-2.5">Bid</th>
+                                        <th className="p-2.5">IV</th>
+                                        <th className="p-2.5">Delta</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-850/40">
+                                      {foOptionChain.calls.map((c: any, index: number) => {
+                                        const strike = c.strike;
+                                        const p = foOptionChain.puts.find((x: any) => x.strike === strike) || {};
+                                        const isItmCall = foOptionChain.spotPrice > strike;
+                                        const isItmPut = foOptionChain.spotPrice < strike;
+                                        
+                                        return (
+                                          <tr key={strike} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                                            {/* CALL DETAILS */}
+                                            <td className={`p-2.5 ${isItmCall ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{c.delta}</td>
+                                            <td className={`p-2.5 ${isItmCall ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{(c.impliedVolatility * 100).toFixed(1)}%</td>
+                                            <td className={`p-2.5 ${isItmCall ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{currencySymbol}{c.bid?.toFixed(2)}</td>
+                                            <td className={`p-2.5 ${isItmCall ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{currencySymbol}{c.ask?.toFixed(2)}</td>
+                                            <td className={`p-2.5 border-r border-slate-200 dark:border-slate-800/80 font-bold text-slate-800 dark:text-slate-200 flex items-center justify-center space-x-1.5 ${isItmCall ? "bg-emerald-500/10 dark:bg-emerald-500/5" : ""}`}>
+                                              <span>{currencySymbol}{c.lastPrice.toFixed(2)}</span>
+                                              <button 
+                                                onClick={() => executePaperFoTrade("CALL", "BUY", strike, c.lastPrice)}
+                                                className="bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] p-0.5 rounded cursor-pointer"
+                                                title="Add to Strategy Builder"
+                                              >
+                                                +
+                                              </button>
+                                            </td>
+
+                                            {/* STRIKE */}
+                                            <td className="p-2.5 font-black bg-slate-50 dark:bg-slate-950/40 text-indigo-500 dark:text-indigo-400 border-x border-slate-200 dark:border-slate-800">{strike.toFixed(2)}</td>
+
+                                            {/* PUT DETAILS */}
+                                            <td className={`p-2.5 border-l border-slate-200 dark:border-slate-800/80 font-bold text-slate-800 dark:text-slate-200 flex items-center justify-center space-x-1.5 ${isItmPut ? "bg-emerald-500/10 dark:bg-emerald-500/5" : ""}`}>
+                                              <span>{currencySymbol}{p.lastPrice?.toFixed(2)}</span>
+                                              <button 
+                                                onClick={() => executePaperFoTrade("PUT", "BUY", strike, p.lastPrice)}
+                                                className="bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] p-0.5 rounded cursor-pointer"
+                                                title="Add to Strategy Builder"
+                                              >
+                                                +
+                                              </button>
+                                            </td>
+                                            <td className={`p-2.5 ${isItmPut ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{currencySymbol}{p.ask?.toFixed(2)}</td>
+                                            <td className={`p-2.5 ${isItmPut ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{currencySymbol}{p.bid?.toFixed(2)}</td>
+                                            <td className={`p-2.5 ${isItmPut ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{(p.impliedVolatility * 100).toFixed(1)}%</td>
+                                            <td className={`p-2.5 ${isItmPut ? "bg-emerald-500/5 dark:bg-emerald-500/2" : ""}`}>{p.delta}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* SUB TAB 2: ML ANALYTICS & GREEKS */}
+                            {foTab === "Analysis" && foMlForecast && (
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* IV Smile Chart */}
+                                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E1322]/20">
+                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs mb-3">Implied Volatility Smile Curve</h4>
+                                  <div className="h-[220px]">
+                                    {isMounted && foOptionChain && (
+                                      <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={foOptionChain.calls} margin={{ left: -20, right: 10 }}>
+                                          <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" opacity={0.2} />
+                                          <XAxis dataKey="strike" tick={{ fontSize: 9 }} stroke="#718096" />
+                                          <YAxis tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} tick={{ fontSize: 9 }} stroke="#718096" />
+                                          <Tooltip formatter={(value: any) => [`${(value * 100).toFixed(2)}%`, "IV"]} />
+                                          <Line type="monotone" dataKey="impliedVolatility" stroke="#8884d8" strokeWidth={2} dot={{ r: 2 }} />
+                                        </LineChart>
+                                      </ResponsiveContainer>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* 5-Day IV Forecast */}
+                                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E1322]/20">
+                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs mb-3 flex items-center justify-between">
+                                    <span>5-Day Implied Volatility Forecast</span>
+                                    <span className={`text-[10px] px-2 py-0.5 rounded font-extrabold uppercase ${foMlForecast.regime === "Expanding" ? "text-emerald-500 bg-emerald-500/10" : "text-rose-500 bg-rose-500/10"}`}>{foMlForecast.regime} Regime</span>
+                                  </h4>
+                                  <div className="h-[220px]">
+                                    {isMounted && foMlForecast.forecast_5d && (
+                                      <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={foMlForecast.forecast_5d} margin={{ left: -20, right: 10 }}>
+                                          <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" opacity={0.2} />
+                                          <XAxis dataKey="Day" tick={{ fontSize: 9 }} stroke="#718096" />
+                                          <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} stroke="#718096" />
+                                          <Tooltip formatter={(value: any) => [`${value}%`, "Predicted IV"]} />
+                                          <Line type="monotone" dataKey="IV" stroke="#10B981" strokeWidth={2} dot={{ r: 3 }} />
+                                        </LineChart>
+                                      </ResponsiveContainer>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* ML Underpriced/Overpriced Recommendations */}
+                                <div className="lg:col-span-2 space-y-3">
+                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs">ML Anomalies Recommendation Report</h4>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                    {foOptionChain && foOptionChain.calls.slice(4, 9).map((c: any) => (
+                                      <div key={c.strike} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/10 flex flex-col justify-between space-y-2">
+                                        <div className="flex justify-between items-start">
+                                          <div>
+                                            <span className="text-3xs font-extrabold uppercase bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-655 dark:text-slate-400">CALL Strike {c.strike}</span>
+                                            <div className="text-2xs font-extrabold text-slate-800 dark:text-slate-200 mt-1">LTP: {currencySymbol}{c.lastPrice.toFixed(2)}</div>
+                                          </div>
+                                          <span className={`text-[10px] px-2 py-0.5 rounded font-black ${
+                                            c.recommendation.action === "BUY" ? "text-emerald-500 bg-emerald-500/10" : c.recommendation.action === "SELL" ? "text-rose-500 bg-rose-500/10" : "text-amber-500 bg-amber-500/10"
+                                          }`}>{c.recommendation.action}</span>
+                                        </div>
+                                        <div className="text-4xs text-slate-500 leading-relaxed">
+                                          Pricing is <span className="font-bold">{c.recommendation.status}</span> by {c.recommendation.divergence_pct}%. (Theory: {currencySymbol}{c.recommendation.theoretical_price})
+                                        </div>
+                                        <div className="w-full bg-slate-250 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                                          <div className={`h-full ${c.recommendation.action === "BUY" ? "bg-emerald-500" : c.recommendation.action === "SELL" ? "bg-rose-500" : "bg-amber-500"}`} style={{ width: `${c.recommendation.confidence}%` }}></div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* SUB TAB 3: PAYOFF SIMULATOR */}
+                            {foTab === "Simulator" && (
+                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Payoff Diagram */}
+                                <div className="lg:col-span-2 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E1322]/20 flex flex-col space-y-4">
+                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs flex justify-between items-center">
+                                    <span>Derivatives Strategy Payoff Diagram</span>
+                                    <span className="text-[10px] text-slate-400">Lot Multiplier: {selectedTicker.endsWith(".NS") ? "50 Qty" : "100 Qty"}</span>
+                                  </h4>
+                                  <div className="h-[240px]">
+                                    {isMounted && foPayoffData.length > 0 ? (
+                                      <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={foPayoffData} margin={{ left: -20, right: 10 }}>
+                                          <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" opacity={0.2} />
+                                          <XAxis dataKey="UnderlyingPrice" tick={{ fontSize: 9 }} stroke="#718096" />
+                                          <YAxis tickFormatter={(v) => `${v >= 0 ? "+" : ""}${v}`} tick={{ fontSize: 9 }} stroke="#718096" />
+                                          <Tooltip formatter={(value: any) => [`${value >= 0 ? "₹" : "-₹"}${Math.abs(value)}`, "PnL"]} />
+                                          <ReferenceLine y={0} stroke="#E2E8F0" strokeWidth={1} strokeDasharray="3 3" />
+                                          <Area type="monotone" dataKey="PnL" stroke="#6366F1" fill="url(#pnlGrad)" />
+                                          <defs>
+                                            <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
+                                              <stop offset="5%" stopColor="#6366F1" stopOpacity={0.4}/>
+                                              <stop offset="95%" stopColor="#6366F1" stopOpacity={0.0}/>
+                                            </linearGradient>
+                                          </defs>
+                                        </AreaChart>
+                                      </ResponsiveContainer>
+                                    ) : (
+                                      <div className="text-center py-24 text-slate-500 text-xs">Build a strategy or add legs to simulate PnL payoff curve.</div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Strategy Leg Builder Panel */}
+                                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/10 flex flex-col justify-between space-y-4">
+                                  <div>
+                                    <h4 className="font-bold text-slate-800 dark:text-white text-xs mb-3">Leg Builder Registry</h4>
+                                    <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                                      {foLegs.length === 0 ? (
+                                        <div className="text-center py-10 text-slate-500 text-3xs">No active legs in strategy. Select a template or add options from the chain grid.</div>
+                                      ) : (
+                                        foLegs.map((leg, idx) => (
+                                          <div key={idx} className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-[#0E1322] flex justify-between items-center text-3xs">
+                                            <div className="flex flex-col space-y-0.5">
+                                              <span className={`font-black ${leg.action === "BUY" ? "text-emerald-500" : "text-rose-500"}`}>{leg.action} {leg.option_type}</span>
+                                              <span className="text-slate-400 font-bold">Strike: {leg.strike} | Prem: {currencySymbol}{leg.premium}</span>
+                                            </div>
+                                            <button 
+                                              onClick={() => setFoLegs(prev => prev.filter((_, i) => i !== idx))}
+                                              className="text-slate-500 hover:text-rose-500 font-bold p-1 cursor-pointer"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* SUB TAB 4: BROKER GATEWAY */}
+                            {foTab === "Broker" && (
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Configuration form */}
+                                <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E1322]/20 flex flex-col space-y-4">
+                                  <h4 className="font-bold text-slate-900 dark:text-white text-xs border-b pb-2.5 border-slate-200 dark:border-slate-800">API Credentials Terminal</h4>
+                                  
+                                  <div className="space-y-3 text-3xs">
+                                    <div>
+                                      <label className="text-slate-500 font-bold uppercase tracking-wider block mb-1">Select Gateway Broker</label>
+                                      <select 
+                                        value={activeBroker}
+                                        onChange={(e) => setActiveBroker(e.target.value)}
+                                        className={`w-full py-2 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
+                                      >
+                                        <option value="None">Direct Sandbox Feed (Akamai WAF Bypass)</option>
+                                        <option value="Zerodha">Zerodha Kite Connect</option>
+                                        <option value="Upstox">Upstox API v2</option>
+                                        <option value="Dhan">DhanHQ Connect</option>
+                                      </select>
+                                    </div>
+
+                                    {activeBroker !== "None" && (
+                                      <>
+                                        <div>
+                                          <label className="text-slate-500 font-bold uppercase tracking-wider block mb-1">Client ID / API Key</label>
+                                          <input 
+                                            type="text"
+                                            value={brokerConfig.api_key}
+                                            onChange={(e) => setBrokerConfig({...brokerConfig, api_key: e.target.value})}
+                                            placeholder="Enter Developer API Key"
+                                            className={`w-full py-2 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="text-slate-500 font-bold uppercase tracking-wider block mb-1">Access Token</label>
+                                          <input 
+                                            type="password"
+                                            value={brokerConfig.access_token}
+                                            onChange={(e) => setBrokerConfig({...brokerConfig, access_token: e.target.value})}
+                                            placeholder="Enter Authorization Access Token"
+                                            className={`w-full py-2 px-3 rounded-lg focus:outline-none border ${themeClasses.input}`}
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+
+                                    <button 
+                                      onClick={() => {
+                                        if (activeBroker === "None") {
+                                          setBrokerConnected(false);
+                                        } else {
+                                          if (!brokerConfig.api_key || !brokerConfig.access_token) {
+                                            alert("Please enter API Key and Access Token credentials.");
+                                            return;
+                                          }
+                                          setBrokerConnected(true);
+                                        }
+                                      }}
+                                      className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl shadow-md cursor-pointer transition-all text-2xs"
+                                    >
+                                      {activeBroker === "None" ? "Switch to Sandbox Sandbox" : "Establish Secure Broker Connection"}
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Connection status / details */}
+                                <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/10 flex flex-col justify-between space-y-4">
+                                  <div>
+                                    <h4 className="font-bold text-slate-850 dark:text-slate-200 text-xs">Broker Gateway Status</h4>
+                                    <div className="mt-4 space-y-3 text-3xs">
+                                      <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-800/80">
+                                        <span className="text-slate-400 font-bold">Active Protocol</span>
+                                        <span className="font-black uppercase text-indigo-500">{activeBroker === "None" ? "Sandbox Feed" : activeBroker}</span>
+                                      </div>
+                                      <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-800/80">
+                                        <span className="text-slate-400 font-bold">Connection State</span>
+                                        <div className="flex items-center space-x-1.5">
+                                          <span className={`h-2.5 w-2.5 rounded-full ${brokerConnected || activeBroker === "None" ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`}></span>
+                                          <span className="font-black">{brokerConnected || activeBroker === "None" ? "ESTABLISHED" : "DISCONNECTED"}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="p-3.5 rounded-lg bg-indigo-600/5 text-4xs leading-relaxed text-indigo-400/80 border border-indigo-550/10">
+                                    🔌 <span className="font-black">Integrator Note:</span> Under production, the broker gateway uses exchange authorized endpoints (`kite.quote` or `upstox-feed`). The sandbox feeds run Black-Scholes Greeks simulations natively in Python.
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* PAPER DERIVATIVES TRADING AND POSITIONS PANEL */}
+                            {foTab === "Simulator" && (
+                              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-white dark:bg-[#0E1322]/20 space-y-4 mt-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+                                  <h4 className="font-bold text-slate-800 dark:text-white text-xs flex items-center gap-1.5">
+                                    <Wallet className="h-4.5 w-4.5 text-indigo-500" />
+                                    <span>Derivatives Simulator Portfolio</span>
+                                  </h4>
+                                  <div className="flex flex-wrap items-center gap-3 text-3xs font-extrabold">
+                                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 py-1.5 px-3 rounded-lg text-slate-400">
+                                      Cash Balance: <span className="text-slate-900 dark:text-slate-100 font-bold">{currencySymbol}{foCashBalance.toLocaleString("en-IN")}</span>
+                                    </div>
+                                    <button 
+                                      onClick={() => {
+                                        setFoCashBalance(1000000);
+                                        setFoPositionList([]);
+                                      }}
+                                      className="bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 px-3 rounded-lg shadow cursor-pointer transition-all"
+                                    >
+                                      Reset Simulator
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-center text-3xs">
+                                    <thead>
+                                      <tr className="bg-slate-50/50 dark:bg-slate-950/20 text-slate-450 uppercase font-black border-b border-slate-200 dark:border-slate-800/80">
+                                        <th className="p-2.5">Symbol</th>
+                                        <th className="p-2.5">Contract</th>
+                                        <th className="p-2.5">Action</th>
+                                        <th className="p-2.5">Quantity</th>
+                                        <th className="p-2.5">Entry Premium</th>
+                                        <th className="p-2.5">Current Value</th>
+                                        <th className="p-2.5 font-bold">Unrealized P&L</th>
+                                        <th className="p-2.5">Actions</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-850/40">
+                                      {foPositionList.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={8} className="p-6 text-center text-slate-500">No active derivatives positions. Purchase contracts from the Option Chain table.</td>
+                                        </tr>
+                                      ) : (
+                                        foPositionList.map((pos) => {
+                                          let livePrice = pos.entry_price;
+                                          if (foOptionChain) {
+                                            const list = pos.option_type === "CALL" ? foOptionChain.calls : foOptionChain.puts;
+                                            const currentOpt = list.find((o: any) => o.strike === pos.strike);
+                                            if (currentOpt) {
+                                              livePrice = currentOpt.lastPrice;
+                                            }
+                                          }
+                                          const mult = pos.action === "BUY" ? 1 : -1;
+                                          const pnl = (livePrice - pos.entry_price) * pos.quantity * mult;
+                                          
+                                          return (
+                                            <tr key={pos.id} className="hover:bg-slate-50/30 dark:hover:bg-slate-900/5">
+                                              <td className="p-2.5 font-bold text-slate-900 dark:text-white">{pos.ticker}</td>
+                                              <td className="p-2.5">{pos.option_type} Strike {pos.strike}</td>
+                                              <td className={`p-2.5 font-extrabold ${pos.action === "BUY" ? "text-emerald-500" : "text-rose-500"}`}>{pos.action}</td>
+                                              <td className="p-2.5 font-mono">{pos.quantity}</td>
+                                              <td className="p-2.5">{currencySymbol}{pos.entry_price.toFixed(2)}</td>
+                                              <td className="p-2.5">{currencySymbol}{livePrice.toFixed(2)}</td>
+                                              <td className={`p-2.5 font-black font-mono ${pnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                                                {pnl >= 0 ? "+" : ""}{currencySymbol}{Math.round(pnl).toLocaleString("en-IN")}
+                                              </td>
+                                              <td className="p-2.5">
+                                                <button 
+                                                  onClick={() => closePaperFoPosition(pos.id)}
+                                                  className="bg-rose-650 hover:bg-rose-500 text-white font-extrabold px-2 py-1 rounded cursor-pointer transition-all"
+                                                >
+                                                  Square Off
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}

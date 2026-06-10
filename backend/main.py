@@ -2459,3 +2459,301 @@ def retrain_ml_model(db: Session = Depends(get_db)):
     except Exception as e:
         logger.exception(f"Error during ML retraining: {e}")
         raise HTTPException(status_code=500, detail=f"Retraining failed: {str(e)}")
+
+
+# ==================== DERIVATIVES & F&O WORKSTATION ENDPOINTS ====================
+
+class LegSimulation(BaseModel):
+    option_type: str
+    action: str
+    strike: float
+    premium: float
+    quantity: int
+
+class PayoffSimRequest(BaseModel):
+    legs: list[LegSimulation]
+    spot_price: float
+
+def get_last_thursday(year: int, month: int) -> date:
+    if month == 12:
+        last_day = date(year, 12, 31)
+    else:
+        last_day = date(year, month + 1, 1) - timedelta(days=1)
+    offset = (last_day.weekday() - 3) % 7
+    return last_day - timedelta(days=offset)
+
+@app.get("/api/fo/expirations")
+def get_fo_expirations(ticker: str, db: Session = Depends(get_db)):
+    ticker = ticker.strip().upper()
+    is_ns = ticker.endswith(".NS")
+    
+    if is_ns:
+        today = datetime.now()
+        expiries = []
+        for i in range(3):
+            m = today.month + i
+            y = today.year
+            if m > 12:
+                m -= 12
+                y += 1
+            last_thu = get_last_thursday(y, m)
+            if i == 0 and last_thu < today.date():
+                continue
+            expiries.append(last_thu.strftime("%Y-%m-%d"))
+        while len(expiries) < 3:
+            m = today.month + len(expiries) + (1 if expiries and int(expiries[0].split("-")[1]) != today.month else 0)
+            y = today.year
+            if m > 12:
+                m -= 12
+                y += 1
+            last_thu = get_last_thursday(y, m)
+            expiries.append(last_thu.strftime("%Y-%m-%d"))
+        return {"ticker": ticker, "expiries": expiries[:3]}
+        
+    try:
+        import yfinance as yf
+        yt = yf.Ticker(ticker)
+        dates = list(yt.options)
+        if dates:
+            return {"ticker": ticker, "expiries": dates[:5]}
+    except Exception as e:
+        logger.warning(f"Failed to fetch US expirations for {ticker}: {e}")
+        
+    today = datetime.now()
+    dates = []
+    for i in range(3):
+        m = today.month + i
+        y = today.year
+        if m > 12:
+            m -= 12
+            y += 1
+        first_day = datetime(y, m, 1)
+        offset = (4 - first_day.weekday()) % 7
+        third_fri = first_day + timedelta(days=offset + 14)
+        dates.append(third_fri.strftime("%Y-%m-%d"))
+    return {"ticker": ticker, "expiries": dates}
+
+@app.get("/api/fo/option-chain")
+def get_fo_option_chain(ticker: str, expiration: str, db: Session = Depends(get_db)):
+    from backend.fo.fo_engine import black_scholes_price, calculate_greeks
+    from backend.fo.fo_ml_predictor import calculate_volatility_smile, recommend_option_trade
+    
+    ticker = ticker.strip().upper()
+    is_ns = ticker.endswith(".NS")
+    
+    try:
+        info = get_cached_stock_info(ticker, db)
+        spot_price = safe_float(info.get("currentPrice") or info.get("close"), 100.0)
+    except Exception:
+        spot_price = 100.0
+        
+    try:
+        exp_date = datetime.strptime(expiration, "%Y-%m-%d").date()
+        days_to_expiry = max(1, (exp_date - datetime.now().date()).days)
+        T = days_to_expiry / 365.0
+    except Exception:
+        T = 30.0 / 365.0
+        
+    r = 0.07 if is_ns else 0.045
+    
+    # Helper to generate synthetic option chain
+    def generate_synthetic():
+        if spot_price < 100:
+            spacing = 2.5
+        elif spot_price < 500:
+            spacing = 5.0
+        elif spot_price < 1000:
+            spacing = 10.0
+        elif spot_price < 5000:
+            spacing = 50.0
+        else:
+            spacing = 100.0
+            
+        atm_strike = round(spot_price / spacing) * spacing
+        strikes = [atm_strike + i * spacing for i in range(-7, 8)]
+        
+        base_iv = 0.18
+        try:
+            history = get_stock_history(ticker, period="3mo", db=db)
+            if len(history) > 10:
+                closes = [h["Close"] for h in history]
+                returns = np.diff(closes) / closes[:-1]
+                base_iv = float(np.std(returns) * np.sqrt(252))
+        except Exception:
+            pass
+            
+        iv_smile = calculate_volatility_smile(spot_price, strikes, base_iv)
+        
+        calls_list = []
+        puts_list = []
+        
+        for strike in strikes:
+            iv = iv_smile[strike]
+            c_price = black_scholes_price(spot_price, strike, T, r, iv, "CALL")
+            c_greeks = calculate_greeks(spot_price, strike, T, r, iv, "CALL")
+            c_rec = recommend_option_trade(spot_price, strike, iv, c_price, "CALL")
+            
+            calls_list.append({
+                "strike": strike,
+                "option_type": "CALL",
+                "lastPrice": round(c_price, 2),
+                "bid": round(c_price * 0.98, 2),
+                "ask": round(c_price * 1.02, 2),
+                "impliedVolatility": round(iv, 4),
+                "volume": int(1500 * (1.0 - abs(strike - spot_price)/spot_price)),
+                "openInterest": int(8000 * (1.0 - abs(strike - spot_price)/spot_price)),
+                "delta": c_greeks["delta"],
+                "gamma": c_greeks["gamma"],
+                "theta": c_greeks["theta"],
+                "vega": c_greeks["vega"],
+                "recommendation": c_rec
+            })
+            
+            p_price = black_scholes_price(spot_price, strike, T, r, iv, "PUT")
+            p_greeks = calculate_greeks(spot_price, strike, T, r, iv, "PUT")
+            p_rec = recommend_option_trade(spot_price, strike, iv, p_price, "PUT")
+            
+            puts_list.append({
+                "strike": strike,
+                "option_type": "PUT",
+                "lastPrice": round(p_price, 2),
+                "bid": round(p_price * 0.98, 2),
+                "ask": round(p_price * 1.02, 2),
+                "impliedVolatility": round(iv, 4),
+                "volume": int(1500 * (1.0 - abs(strike - spot_price)/spot_price)),
+                "openInterest": int(8000 * (1.0 - abs(strike - spot_price)/spot_price)),
+                "delta": p_greeks["delta"],
+                "gamma": p_greeks["gamma"],
+                "theta": p_greeks["theta"],
+                "vega": p_greeks["vega"],
+                "recommendation": p_rec
+            })
+            
+        return {
+            "ticker": ticker,
+            "expiration": expiration,
+            "spotPrice": spot_price,
+            "calls": calls_list,
+            "puts": puts_list
+        }
+
+    if is_ns:
+        return generate_synthetic()
+        
+    try:
+        import yfinance as yf
+        yt = yf.Ticker(ticker)
+        chain = yt.option_chain(expiration)
+        
+        calls = []
+        puts = []
+        base_iv = 0.20
+        
+        for _, row in chain.calls.iterrows():
+            strike = float(row.get("strike", 0.0))
+            price = float(row.get("lastPrice", 0.0))
+            iv = float(row.get("impliedVolatility", base_iv))
+            greeks = calculate_greeks(spot_price, strike, T, r, iv, "CALL")
+            rec = recommend_option_trade(spot_price, strike, iv, price, "CALL")
+            
+            calls.append({
+                "strike": strike,
+                "option_type": "CALL",
+                "lastPrice": price,
+                "bid": float(row.get("bid", price * 0.99)),
+                "ask": float(row.get("ask", price * 1.01)),
+                "impliedVolatility": iv,
+                "volume": int(row.get("volume") or 0),
+                "openInterest": int(row.get("openInterest") or 0),
+                "delta": greeks["delta"],
+                "gamma": greeks["gamma"],
+                "theta": greeks["theta"],
+                "vega": greeks["vega"],
+                "recommendation": rec
+            })
+            
+        for _, row in chain.puts.iterrows():
+            strike = float(row.get("strike", 0.0))
+            price = float(row.get("lastPrice", 0.0))
+            iv = float(row.get("impliedVolatility", base_iv))
+            greeks = calculate_greeks(spot_price, strike, T, r, iv, "PUT")
+            rec = recommend_option_trade(spot_price, strike, iv, price, "PUT")
+            
+            puts.append({
+                "strike": strike,
+                "option_type": "PUT",
+                "lastPrice": price,
+                "bid": float(row.get("bid", price * 0.99)),
+                "ask": float(row.get("ask", price * 1.01)),
+                "impliedVolatility": iv,
+                "volume": int(row.get("volume") or 0),
+                "openInterest": int(row.get("openInterest") or 0),
+                "delta": greeks["delta"],
+                "gamma": greeks["gamma"],
+                "theta": greeks["theta"],
+                "vega": greeks["vega"],
+                "recommendation": rec
+            })
+            
+        return {
+            "ticker": ticker,
+            "expiration": expiration,
+            "spotPrice": spot_price,
+            "calls": calls,
+            "puts": puts
+        }
+    except Exception as e:
+        logger.error(f"yfinance direct Option Chain failed for {ticker}: {e}")
+        return generate_synthetic()
+
+@app.post("/api/fo/simulate-payoff")
+def simulate_payoff(req: PayoffSimRequest):
+    spot_price = req.spot_price
+    if spot_price <= 0:
+        spot_price = 100.0
+        
+    price_points = np.linspace(spot_price * 0.8, spot_price * 1.2, 41)
+    chart_data = []
+    
+    for price in price_points:
+        total_pnl = 0.0
+        for leg in req.legs:
+            mult = 1 if leg.action.upper() == "BUY" else -1
+            if leg.option_type.upper() == "CALL":
+                pnl = max(0.0, price - leg.strike) - leg.premium
+            elif leg.option_type.upper() == "PUT":
+                pnl = max(0.0, leg.strike - price) - leg.premium
+            else:
+                pnl = price - leg.strike
+            total_pnl += pnl * leg.quantity * mult
+            
+        chart_data.append({
+            "UnderlyingPrice": round(price, 2),
+            "PnL": round(total_pnl, 2)
+        })
+        
+    return {"chart_data": chart_data}
+
+@app.get("/api/fo/ml-forecast")
+def get_fo_ml_forecast(ticker: str, db: Session = Depends(get_db)):
+    from backend.fo.fo_ml_predictor import predict_iv_trend
+    ticker = ticker.strip().upper()
+    try:
+        info = get_cached_stock_info(ticker, db)
+        spot_price = safe_float(info.get("currentPrice") or info.get("close"), 100.0)
+    except Exception:
+        spot_price = 100.0
+        
+    base_iv = 0.22
+    try:
+        history = get_stock_history(ticker, period="3mo", db=db)
+        if len(history) > 10:
+            closes = [h["Close"] for h in history]
+            returns = np.diff(closes) / closes[:-1]
+            base_iv = float(np.std(returns) * np.sqrt(252))
+    except Exception:
+        pass
+        
+    forecast_data = predict_iv_trend(ticker, base_iv)
+    return forecast_data
+
