@@ -882,7 +882,10 @@ export default function Dashboard() {
 
   async function checkBackendConnection() {
     try {
-      const res = await fetch(`/api/stocks`, { signal: AbortSignal.timeout(5000) });
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 8000); // 8-second timeout
+      const res = await fetch(`/api/status`, { signal: controller.signal });
+      clearTimeout(id);
       if (res.ok) {
         setBackendConnected(true);
       } else {

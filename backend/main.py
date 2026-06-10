@@ -257,6 +257,10 @@ def startup_event():
 def read_root():
     return {"message": "Welcome to the Automated Financial Research API", "status": "online"}
 
+@app.get("/api/status")
+def get_api_status():
+    return {"status": "online"}
+
 # ==================== STOCK ENDPOINTS ====================
 
 @app.get("/api/stocks")
